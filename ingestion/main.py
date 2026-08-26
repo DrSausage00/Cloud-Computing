@@ -9,7 +9,6 @@ from parsers.pipe_parser import parse_machine_c
 from producer.kafka_producer import send_event
 
 import time
-
 while True:
 
     a = parse_machine_a(generate_machine_a())
