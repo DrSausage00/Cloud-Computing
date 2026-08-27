@@ -14,9 +14,9 @@ while True:
     a = parse_machine_a(generate_machine_a())
     b = parse_machine_b(generate_machine_b())
     c = parse_machine_c(generate_machine_c())
-
+  
     send_event("machine-events", a)
     send_event("machine-events", b)
     send_event("machine-events", c)
-
+  
     time.sleep(2)

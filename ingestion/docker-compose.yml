@@ -20,3 +20,67 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  minio:
+    image : minio/minio:latest
+    container_name: minio
+
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes: 
+      - minio_data:/data
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+
+    depends_on:
+      - minio
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_APP_USER: ${MINIO_APP_USER}
+      MINIO_APP_PASSWORD: ${MINIO_APP_PASSWORD}
+      MINIO_DATA_BUCKET: ${MINIO_DATA_BUCKET}
+      MINIO_CHECKPOINT_BUCKET: ${MINIO_CHECKPOINT_BUCKET}
+
+    entrypoint: ["/bin/sh", "-c"]
+
+    command:
+      - |
+        set -e
+
+        echo "Waiting for MinIO..."
+
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          echo "MinIO not ready yet..."
+          sleep 2
+        done
+
+        echo "MinIO is ready."
+
+        echo "Creating data bucket: $$MINIO_DATA_BUCKET"
+        mc mb --ignore-existing "local/$$MINIO_DATA_BUCKET"
+
+        echo "Creating checkpoint bucket: $$MINIO_CHECKPOINT_BUCKET"
+        mc mb --ignore-existing "local/$$MINIO_CHECKPOINT_BUCKET"
+
+        echo "Creating application user: $$MINIO_APP_USER"
+        mc admin user add local "$$MINIO_APP_USER" "$$MINIO_APP_PASSWORD" || true
+
+        echo "Assigning readwrite policy..."
+        mc admin policy attach local readwrite --user "$$MINIO_APP_USER"
+
+        echo "MinIO initialization finished successfully."
+      
+
+
+volumes:
+  minio_data:
