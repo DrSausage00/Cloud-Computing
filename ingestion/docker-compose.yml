@@ -120,6 +120,16 @@ services:
           --replication-factor 1
         echo "Kafka initialization finished."
 
+        echo "Configuring retention for machine-events..."
+
+        /opt/kafka/bin/kafka-configs.sh \
+          --bootstrap-server kafka:29092 \
+          --entity-type topics \
+          --entity-name machine-events \
+          --alter \
+          --add-config retention.ms=604800000,cleanup.policy=delete
+        echo "Kafka retention configured."
+
 volumes:
   kafka_data:
   minio_data:
