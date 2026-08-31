@@ -1,0 +1,5 @@
+stream-processing/checkpoints/
+stream-processing/.venv/
+stream-processing/hadoop/
+__pycache__/
+*.pyc
