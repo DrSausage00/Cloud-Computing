@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS bronze_machine_events (
 )
 
 USING DELTA
-PARTINIONED BY (event_date)
+PARTITIONED BY (event_date)
 LOCATION 's3a://mes-data/bronze/machine-events';
 
 -- Silver Layer
