@@ -20,10 +20,24 @@ import os
 
 temperature_limit = float(os.getenv("TEMP_LIMIT", "95.0"))
 
+# ermöglicht die Verwendung von Betriebssystemfunktionen damit die MinIO-Umgebungsvariablen gelesen werden können
+minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+minio_access_key = os.getenv("MINIO_ACCESS_KEY")
+minio_secret_key = os.getenv("MINIO_SECRET_KEY")
+minio_data_bucket = os.getenv("MINIO_DATA_BUCKET", "mes-data")  
+minio_checkpoint_bucket = os.getenv("MINIO_CHECKPOINT_BUCKET", "spark-checkpoints")
+
+kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+
 # erstellt eine SparkSession
 spark = (SparkSession.builder
          .appName("MESStreamProcessing")
          .master("local[*]")
+         .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
+         .config("spark.hadoop.fs.s3a.access.key", minio_access_key)
+         .config("spark.hadoop.fs.s3a.secret.key", minio_secret_key)
+         .config("spark.hadoop.fs.s3a.path.style.access", "true")
+         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
          .getOrCreate()
 )
 
@@ -41,7 +55,7 @@ machine_schema = StructType([StructField("timestamp", StringType(), True),
 # erstellt einen Streaming-DataFrame, der kontinuierlich Daten aus einer Kafka-Quelle liest
 stream = (spark.readStream
           .format("kafka")
-          .option("kafka.bootstrap.servers", "localhost:9092")
+          .option("kafka.bootstrap.servers", kafka_bootstrap_servers)
           .option("subscribe", "machine-events")
           .option("startingOffsets", "latest")
           .load()
@@ -82,12 +96,16 @@ silver_stream = (aggregated_stream
                   .withColumn("limit_exceeded", col("max_temperature") > col("temperature_limit"))
 )
 
+# definiert die Pfade für die Speicherung der aggregierten Daten und der Checkpoints in MinIO
+silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics"
+checkpoint_path = f"s3a://{minio_checkpoint_bucket}/silver/machine-metrics"
+
 # gibt die Struktur des Streaming-DataFrames aus
 query = (silver_stream.writeStream
-         .format("console")
-         .outputMode("update")
-         .option("truncate", "false")
-         .option("checkpointLocation", "./checkpoints/kafka_stream_v2")
+         .format("parquet")
+         .outputMode("append")
+         .option("path", silver_path)
+         .option("checkpointLocation", checkpoint_path)
          .start()
           )
 
