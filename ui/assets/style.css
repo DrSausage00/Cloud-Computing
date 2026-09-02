@@ -1,0 +1,62 @@
+body {
+  margin: 0;
+  background: #F4F5F6;
+  color: #1F2933;
+  font-family: system-ui, sans-serif;
+}
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 24px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.tile {
+  background: #FFFFFF;
+  border: 1px solid #DFE4E7;
+  padding: 16px 18px;
+}
+
+.tile--alarm {
+  border-color: #B91C1C;
+}
+
+.tile__id {
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.tile__value {
+  font-size: 30px;
+  font-weight: 600;
+  margin: 6px 0;
+}
+
+.tile__status {
+  font-size: 14px;
+}
+
+.tile__warning {
+  font-size: 13px;
+  color: #B91C1C;
+  min-height: 18px;
+}
+
+.picker {
+  max-width: 220px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
