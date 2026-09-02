@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -7,11 +7,5 @@ class MachineEvent:
     timestamp: str
     machine_id: str
     machine_type: str
-
-    temperature: Optional[float] = None
-    pressure: Optional[float] = None
-    vibration: Optional[float] = None
-    status: Optional[str] = None
-
-
-# einheitliches datan schema
+    measurements: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = "1.0"
