@@ -1,11 +1,19 @@
 import random
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 
-def generate_machine_c():
+def generate_machine_c(machine_id: str = "C-001") -> str:
+    timestamp = datetime.now(UTC).isoformat()
+    temperature = round(random.uniform(70, 100), 2)
+    status = random.choice([
+        "RUNNING",
+        "STOPPED",
+        "ERROR"
+    ])
+
     return (
-        f"{datetime.now(UTC).isoformat()}|"
-        f"C-001|"
-        f"{round(random.uniform(70,100),2)}|"
-        f"{random.choice(['RUNNING','STOPPED','ERROR'])}"
+        f"{timestamp}|"
+        f"{machine_id}|"
+        f"{temperature}|"
+        f"{status}"
     )
