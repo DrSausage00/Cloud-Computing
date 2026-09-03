@@ -3,6 +3,8 @@ import os
 
 from dataclasses import asdict
 from kafka import KafkaProducer
+
+
 KAFKA_BOOTSTRAP_SERVERS = os.getenv(
     "KAFKA_BOOTSTRAP_SERVERS", 
     "localhost:9092"
@@ -10,7 +12,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv(
 
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    key_serializer=lambda k: json.dumps(k).encode("utf-8"),
+    key_serializer=lambda k: k.encode("utf-8"),
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
 
