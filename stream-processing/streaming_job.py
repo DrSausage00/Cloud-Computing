@@ -45,14 +45,23 @@ spark = (SparkSession.builder
 
 spark.sparkContext.setLogLevel("WARN")
 
+# definiert das Schema für die Messdaten, die von den Maschinen generiert werden
+measurement_schema = StructType([
+    StructField("temperature", DoubleType(), True),
+    StructField("pressure", DoubleType(), True),
+    StructField("vibration", DoubleType(), True),
+    StructField("rotation_speed", DoubleType(), True),
+    StructField("power_consumption", DoubleType(), True),
+    StructField("status", StringType(), True)
+])
+
 # definiert das Schema für die JSON-Daten, die von der Kafka-Quelle gelesen werden
 machine_schema = StructType([StructField("timestamp", StringType(), True),
                              StructField("machine_id", StringType(), True),
                              StructField("machine_type", StringType(), True),
-                             StructField("temperature", DoubleType(), True),
-                             StructField("pressure", DoubleType(), True),
-                             StructField("vibration", DoubleType(), True),
-                             StructField("status", StringType(), True)])
+                             StructField("measurements", measurement_schema, True),
+                             StructField("schema_version", StringType(), True)
+])
 
 # erstellt einen Streaming-DataFrame, der kontinuierlich Daten aus einer Kafka-Quelle liest
 stream = (spark.readStream
@@ -66,8 +75,24 @@ stream = (spark.readStream
 # erstellt einen neuen Streaming-DataFrame, der die Spalten "machine_id" und "temperature" enthält
 machine_stream = (stream
                   .select(from_json(col("value").cast("string"), machine_schema).alias("data"))
-                  .select("data.*")
+                  .select(col("data.timestamp").alias("timestamp"),
+                          col("data.machine_id").alias("machine_id"),
+                          col("data.machine_type").alias("machine_type"),
+                          col("data.measurements.temperature").alias("temperature"),
+                          col("data.measurements.pressure").alias("pressure"),
+                          col("data.measurements.vibration").alias("vibration"),
+                          col("data.measurements.status").alias("status"),
+                          col("data.schema_version").alias("schema_version"))
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
+)
+
+debug_input_query = (
+    machine_stream.writeStream
+    .format("console")
+    .outputMode("append")
+    .trigger(processingTime="10 seconds")
+    .option("truncate", "false")
+    .start()
 )
 
 # merkt sich den zuletzt bekannten Status jeder Maschine
@@ -107,6 +132,15 @@ silver_stream = (aggregated_stream
                   .withColumn("limit_exceeded", col("max_temperature") > col("temperature_limit"))
 )
 
+debug_silver_query = (
+    silver_stream.writeStream
+    .format("console")
+    .outputMode("update")
+    .trigger(processingTime="10 seconds")
+    .option("truncate", "false")
+    .start()
+)
+
 # Pfad für die aggregierten 10-Sekunden-Maschinenmetriken
 silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics"
 checkpoint_path = f"{checkpoint_dir}/machine-metrics"
@@ -126,6 +160,7 @@ def write_status_to_minio(batch_df, batch_id):
 silver_query = (silver_stream.writeStream
                 .format("parquet")
                 .outputMode("append")
+                .trigger(processingTime="10 seconds")
                 .option("path", silver_path)
                 .option("checkpointLocation", checkpoint_path)
                 .start()
