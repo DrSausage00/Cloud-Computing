@@ -20,19 +20,20 @@ import os
 
 temperature_limit = float(os.getenv("TEMP_LIMIT", "95.0"))
 
+kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+
 # ermöglicht die Verwendung von Betriebssystemfunktionen damit die MinIO-Umgebungsvariablen gelesen werden können
 minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 minio_access_key = os.getenv("MINIO_ACCESS_KEY")
 minio_secret_key = os.getenv("MINIO_SECRET_KEY")
 minio_data_bucket = os.getenv("MINIO_DATA_BUCKET", "mes-data")  
-minio_checkpoint_bucket = os.getenv("MINIO_CHECKPOINT_BUCKET", "spark-checkpoints")
-
-kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+checkpoint_dir = os.getenv("SPARK_CHECKPOINT_DIR", "/checkpoints")
 
 # erstellt eine SparkSession
 spark = (SparkSession.builder
          .appName("MESStreamProcessing")
-         .master("local[*]")
+         .master("local[2]") # setzt die Anzahl der Threads auf 2
+         .config("spark.sql.shuffle.partitions", "4") # setzt die Anzahl der Partitionen für Shuffle-Operationen auf 4
          .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
          .config("spark.hadoop.fs.s3a.access.key", minio_access_key)
          .config("spark.hadoop.fs.s3a.secret.key", minio_secret_key)
@@ -97,8 +98,8 @@ silver_stream = (aggregated_stream
 )
 
 # definiert die Pfade für die Speicherung der aggregierten Daten und der Checkpoints in MinIO
-silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics"
-checkpoint_path = f"s3a://{minio_checkpoint_bucket}/silver/machine-metrics"
+silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics-test"
+checkpoint_path = f"{checkpoint_dir}/machine-metrics"
 
 # gibt die Struktur des Streaming-DataFrames aus
 query = (silver_stream.writeStream
