@@ -8,7 +8,7 @@ stream-processing/hadoop/
 __pycache__/
 *.pyc
 
-# terrfaform
+# terraform
 .terraform/
 *.tfstate
 *.tfstate.*
