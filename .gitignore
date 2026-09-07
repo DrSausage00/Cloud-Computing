@@ -1,5 +1,15 @@
+
+# Stream Processing
 stream-processing/checkpoints/
 stream-processing/.venv/
 stream-processing/hadoop/
+
+# Python stuff
 __pycache__/
 *.pyc
+
+# terrfaform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform/generated-inventory.yml
