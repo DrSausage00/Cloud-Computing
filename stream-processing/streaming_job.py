@@ -12,7 +12,8 @@ from pyspark.sql import SparkSession
 # max_by (Maximum nach Spalte), 
 # from_json (JSON in DataFrame konvertieren), 
 # to_timestamp (String in Timestamp konvertieren)
-from pyspark.sql.functions import col, lit, window, avg, count, min, max, max_by, from_json, to_timestamp
+# to_date (String in Date konvertieren)
+from pyspark.sql.functions import col, lit, window, avg, count, min, max, max_by, from_json, to_timestamp, to_date
 # ermöglicht die Verwendung von den Funktionen
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 # ermöglicht die Verwendung von Betriebssystemfunktionen
@@ -69,6 +70,14 @@ machine_stream = (stream
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
 )
 
+# merkt sich den zuletzt bekannten Status jeder Maschine
+status_stream = (machine_stream
+                 .filter(col("status").isNotNull())
+                 .groupBy(col("machine_id"), col("machine_type"))
+                 .agg(max_by(col("status"), col("timestamp")).alias("last_status"), 
+                      max((col("timestamp"))).alias("last_timestamp"))
+                 )
+
 # aggregiert die Daten im Streaming-DataFrame nach einem Zeitfenster von 10 Sekunden und der Maschinen-ID
 aggregated_stream = (machine_stream
                      .withWatermark("timestamp", "20 seconds")
@@ -89,6 +98,7 @@ silver_stream = (aggregated_stream
                   .withColumn("window_start", col("window.start"))
                   .withColumn("window_end", col("window.end"))
                   .drop("window")
+                  .withColumn("event_date", to_date(col("window_start")))
 
                   # Grenze ergänzen
                   .withColumn("temperature_limit", lit(temperature_limit))
@@ -97,19 +107,37 @@ silver_stream = (aggregated_stream
                   .withColumn("limit_exceeded", col("max_temperature") > col("temperature_limit"))
 )
 
-# definiert die Pfade für die Speicherung der aggregierten Daten und der Checkpoints in MinIO
-silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics-test"
+# Pfad für die aggregierten 10-Sekunden-Maschinenmetriken
+silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics"
 checkpoint_path = f"{checkpoint_dir}/machine-metrics"
 
-# gibt die Struktur des Streaming-DataFrames aus
-query = (silver_stream.writeStream
-         .format("parquet")
-         .outputMode("append")
-         .option("path", silver_path)
-         .option("checkpointLocation", checkpoint_path)
-         .start()
-          )
+# Pfad für den zuletzt bekannten Status jeder Maschine
+status_path = f"s3a://{minio_data_bucket}/silver/machine-status"
+status_checkpoint_path = f"{checkpoint_dir}/machine-status"
 
+# schreibt den aktuellen Status aller Maschinen nach MinIO
+def write_status_to_minio(batch_df, batch_id):
+    (batch_df.write
+     .mode("overwrite")
+     .parquet(status_path)
+    )
 
-# wartet darauf, dass der Streaming-Job beendet wird
-query.awaitTermination()
+# gibt die 10-ekunden-Aggregation nach MinIO aus
+silver_query = (silver_stream.writeStream
+                .format("parquet")
+                .outputMode("append")
+                .option("path", silver_path)
+                .option("checkpointLocation", checkpoint_path)
+                .start()
+                )
+
+# merkt sich dauerhaft den zuletzt bekannten Status jeder Maschine
+status_query = (status_stream.writeStream
+                .foreachBatch(write_status_to_minio)
+                .outputMode("complete")
+                .option("checkpointLocation", status_checkpoint_path)
+                .start()
+                )
+
+# wartet auf die Beendigung eines der beiden Streaming-Jobs
+spark.streams.awaitAnyTermination()
