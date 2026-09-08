@@ -14,14 +14,20 @@ Ingestion -> Kafka topic machine-events -> Stream Processing -> MinIO -> Serving
   "timestamp": "string",
   "machine_id": "string",
   "machine_type": "string",
-  "temperature": 0.0,
-  "pressure": 0.0,
-  "vibration": 0.0,
-  "status": "string"
+  "measurements": {
+    "temperature": 0.0,
+    "pressure": 0.0,
+    "vibration": 0.0,
+    "rotation_speed": 0.0,
+    "power_consumption": 0.0,
+    "status": "string"
+  },
+  "schema_version": "string"
 }
-```
 
-Alle Metrikfelder nullable.
+Alle Felder unter measurements nullable — jeder Maschinentyp liefert nur einen Teil davon
+(A: temperature/pressure/rotation_speed/power_consumption; B: temperature/vibration;
+C: temperature/status).
 
 ## Kafka (Kirill)
 
