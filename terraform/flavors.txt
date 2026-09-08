@@ -1,0 +1,33 @@
++--------------------------------------+----------------+-------+------+-----------+-------+-----------+
+| ID                                   | Name           |   RAM | Disk | Ephemeral | VCPUs | Is Public |
++--------------------------------------+----------------+-------+------+-----------+-------+-----------+
+| 06a19e5e-4ca3-401e-91f3-4ecad1e943e4 | mb1.large      | 12288 |   10 |         0 |     4 | True      |
+| 1a327e46-dd97-4693-8546-427723da7236 | gp1.large      |  8192 |   10 |         0 |     4 | True      |
+| 264dfa01-ab66-46e4-9a74-8bc1400bf3ec | compute.micro  |  4096 |   40 |         0 |     2 | True      |
+| 2f6d8186-c2e6-421f-999a-b9722b3fa3ac | sb.medium      |  8192 |  100 |         0 |     6 | True      |
+| 2feb3afb-3dc2-4f9d-bfd6-ed6e049e1c95 | m1.extra_large | 16384 |   40 |         0 |     8 | True      |
+| 3303397a-52be-46a0-a6b3-a9a942dca029 | k8s.master     |  4096 |   30 |         0 |     2 | True      |
+| 3a5c4319-1f9c-4a2b-a4c4-2934c479aac4 | memory.small   | 32768 |   80 |         0 |     4 | True      |
+| 3c34548d-2bdd-48db-b8e3-cc39cee397a1 | general.xlarge | 65536 |  160 |         0 |    16 | True      |
+| 4d06c985-0d0e-41c7-ab73-1b2d29cbcd86 | compute.medium | 16384 |  120 |         0 |     8 | True      |
+| 4e12d16b-060f-4369-80be-c53cf71dae6e | general.small  |  8192 |   50 |         0 |     2 | True      |
+| 4f1e2c76-39bb-4013-98a3-376a1d84c6bb | general.large  | 32768 |  120 |         0 |     8 | True      |
+| 501334f7-88e6-4b62-90c9-ae6b0df61720 | general.micro  |  4096 |   30 |         0 |     1 | True      |
+| 62d6d6a9-1ba1-4e5f-ab2a-4eacfb619420 | cb1.small      |  1024 |   10 |         0 |     1 | True      |
+| 63baaef1-427d-4287-a42d-2cf07d44c5a8 | win11.medium   |  8192 |   80 |         0 |     2 | True      |
+| 924f7e22-b723-4471-a862-e89e4acf819c | cb1.large      |  4096 |   10 |         0 |     4 | True      |
+| 94e76bf1-99c4-4416-a938-c171a8307496 | mb1.small      |  3072 |   10 |         0 |     1 | True      |
+| 985678c2-41d1-4435-b6ef-d9f41dab3e1d | compute.small  |  8192 |   80 |         0 |     4 | True      |
+| a9bdb7e2-6c90-4388-bcff-8f471e92e17f | memory.micro   | 16384 |   40 |         0 |     2 | True      |
+| ae7ccbe6-72c4-4dc3-85eb-61e9853f3a49 | sb.large       |    16 |  200 |         0 |    12 | True      |
+| b23cd94d-3997-40eb-bf31-155b936cc438 | general.medium | 16384 |   80 |         0 |     4 | True      |
+| be965cb6-6860-4439-8882-cf954d8de555 | k8s.node       |  8192 |   50 |         0 |     4 | True      |
+| d7e66883-03f7-497f-8b1f-032953a74a91 | gp1.medium     |  4096 |   10 |         0 |     2 | True      |
+| d8a9e29e-1f5f-4bb3-b6ba-dceea8802d88 | gp1.small      |  2048 |   10 |         0 |     1 | True      |
+| db81fff2-e798-4ac9-981e-f6e4f3895f87 | win.default    | 16384 |   80 |         0 |     2 | True      |
+| de1c3cab-bf3c-41b3-bd05-c006e1dff06f | memory.nano    |  8192 |   20 |         0 |     1 | True      |
+| e02532e2-1f68-4a28-9b53-69ead4bab868 | general.nano   |  2048 |   20 |         0 |     1 | True      |
+| f6d6baca-7401-4fde-a2f2-6a3814135983 | win.largedisk  | 16384 |  120 |         0 |     8 | True      |
+| f88b7161-7816-41f1-b77f-e37157a492fe | mb1.medium     |  6144 |   10 |         0 |     2 | True      |
+| f8d1452c-19b3-4569-9cb9-c868379a2457 | memory.medium  | 65536 |  120 |         0 |     8 | True      |
++--------------------------------------+----------------+-------+------+-----------+-------+-----------+
