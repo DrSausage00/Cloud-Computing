@@ -18,31 +18,38 @@ spec:
     spec:
       containers:
         - name: minio
-          image: nginx:alpine
+          image: minio/minio:latest
           ports:
-            - containerPort: 80
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 100m
+              memory: 256Mi
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 3
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /minio/health/live
+              port: 9000
             initialDelaySeconds: 10
             periodSeconds: 15
           volumeMounts:
             - name: data
               mountPath: /data
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: minio-credentials
   volumeClaimTemplates:
     - metadata:
         name: data
