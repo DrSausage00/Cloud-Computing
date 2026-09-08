@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: mes
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  TEMP_LIMIT: "85"
+  MINIO_ENDPOINT: "http://minio:9000"
+  MINIO_DATA_BUCKET: "mes-data"
+  SPARK_CHECKPOINT_DIR: "s3a://spark-checkpoints/checkpoints"
+  USE_MOCK: "false"
+  API_BASE_URL: "http://serving-api:8000"
+  POLL_INTERVAL_SECONDS: "5"
+  HISTORY_MINUTES: "15"

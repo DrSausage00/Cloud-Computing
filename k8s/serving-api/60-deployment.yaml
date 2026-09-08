@@ -39,3 +39,6 @@ spec:
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 15
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
