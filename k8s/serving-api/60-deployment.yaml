@@ -42,3 +42,5 @@ spec:
           envFrom:
             - configMapRef:
                 name: pipeline-config
+            - secretRef:
+                name: minio-credentials
