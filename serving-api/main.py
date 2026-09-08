@@ -29,8 +29,7 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_DATA_BUCKET = os.getenv("MINIO_DATA_BUCKET", "mes-data")
 
 # Genau der Pfad, unter dem der Spark-Job schreibt (silver_path in streaming_job.py)
-SILVER_PATH = f"s3://{MINIO_DATA_BUCKET}/silver/machine-metrics/*/*.parquet"
-
+SILVER_PATH = f"s3://{MINIO_DATA_BUCKET}/silver/machine-metrics/"
 
 def load_table() -> pd.DataFrame:
     """Liest alle Parquet-Dateien der Silver-Schicht als eine Tabelle ein.
