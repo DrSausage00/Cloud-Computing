@@ -18,28 +18,57 @@ spec:
     spec:
       containers:
         - name: kafka
-          image: nginx:alpine
+          image: confluentinc/cp-kafka:7.7.1
           ports:
-            - containerPort: 80
+            - containerPort: 9092
+              name: kafka
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 250m
+              memory: 768Mi
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: 1000m
+              memory: 1200Mi
           readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 3
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 10
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
             periodSeconds: 15
+            failureThreshold: 5
+          env:
+            - name: KAFKA_NODE_ID
+              value: "0"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "0@kafka-0.kafka.mes.svc.cluster.local:9093"
+            - name: CLUSTER_ID
+              value: "MkU3OEVBNTcwNTJENDM2Qk"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms512m -Xmx512m"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka-0.kafka.mes.svc.cluster.local:9092"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "3"
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "168"
           volumeMounts:
             - name: data
               mountPath: /var/lib/kafka/data
