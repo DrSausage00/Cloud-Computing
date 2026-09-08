@@ -100,6 +100,19 @@ def fetch_latest() -> list[dict]:
     return response.json()
 
 
+def fetch_machine_ids() -> list[str]:
+    """Welche Maschinen liefern gerade Daten? Fuellt das Dropdown."""
+    return sorted({row["machine_id"] for row in fetch_latest()})
+
+
+def fetch_history_all(minutes: int = 15) -> list[dict]:
+    """Alle Fenster aller Maschinen. Fuer die Tabelle."""
+    rows: list[dict] = []
+    for machine_id in fetch_machine_ids():
+        rows.extend(fetch_history(machine_id, minutes=minutes))
+    return sorted(rows, key=lambda r: r["window_start"], reverse=True)
+
+
 def fetch_history(machine_id: str, minutes: int = 15) -> list[dict]:
     """Zeitreihe einer Maschine. Fuer den Verlaufs-Chart."""
     if USE_MOCK:
