@@ -30,12 +30,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /     # aaron api ready path
-              port: 8000
+              port: 80
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /     # aaron api live path (health)
-              port: 8000
+              port: 80
             initialDelaySeconds: 10
             periodSeconds: 15
