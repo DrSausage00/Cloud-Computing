@@ -8,6 +8,7 @@ data:
   TEMP_LIMIT: "85"
   MINIO_ENDPOINT: "http://minio:9000"
   MINIO_DATA_BUCKET: "mes-data"
+  SPARK_CHECKPOINT_BUCKET: "spark-checkpoints" 
   SPARK_CHECKPOINT_DIR: "s3a://spark-checkpoints/checkpoints"
   USE_MOCK: "false"
   API_BASE_URL: "http://serving-api:8000"
