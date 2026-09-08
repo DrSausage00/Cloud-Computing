@@ -8,7 +8,7 @@ data "openstack_images_image_v2" "ubuntu" {
 resource "openstack_compute_instance_v2" "master" {
   name            = "mes-master"
   image_id        = data.openstack_images_image_v2.ubuntu.id
-  flavor_name     = var.flavor_name
+  flavor_name     = var.flavor_master
   key_pair        = var.key_pair
   security_groups = ["default"]
 
@@ -24,7 +24,7 @@ resource "openstack_compute_instance_v2" "worker" {
 
   name            = "mes-worker-${count.index + 1}"
   image_id        = data.openstack_images_image_v2.ubuntu.id
-  flavor_name     = var.flavor_name
+  flavor_name     = var.flavor_worker
   key_pair        = var.key_pair
   security_groups = ["default"]
 

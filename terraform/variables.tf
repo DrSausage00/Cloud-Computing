@@ -11,9 +11,14 @@ variable "image_name" {
   default = "Ubuntu 24.04" # ost, Ubuntu 24.04
 }
 
-variable "flavor_name" {
+variable "flavor_master" {
   description = "OpenStack flavor (VM size) to use for all nodes"
   default     = "general.medium"
+}
+
+variable "flavor_worker" {
+  # general.small = 2 vCPU / 8 GB / 50 GB
+  default = "general.small"
 }
 
 variable "key_pair" {
