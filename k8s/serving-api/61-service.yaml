@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: serving-api
+  namespace: mes
+  labels:
+    app: serving-api
+spec:
+  type: ClusterIP
+  selector:
+    app: serving-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
