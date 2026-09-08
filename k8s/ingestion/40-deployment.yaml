@@ -17,7 +17,8 @@ spec:
     spec:
       containers:
         - name: ingestion
-          image: nginx:alpine
+          image: mes/ingestion:0.1
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
           resources:
@@ -25,20 +26,13 @@ spec:
               cpu: 50m
               memory: 64Mi
             limits:
-              cpu: 200m
-              memory: 128Mi
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 5
+              cpu: 300m
+              memory: 256Mi
           livenessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            exec:
+              command: ["sh", "-c", "pgrep -f main.py > /dev/null"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
           envFrom:
             - configMapRef:
                 name: pipeline-config
