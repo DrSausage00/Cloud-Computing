@@ -1,3 +1,11 @@
+:root {
+  --ok: #1D7A5F;
+  --warn: #B45309;
+  --alarm: #B91C1C;
+  --border: #DFE4E7;
+  --muted: #6B7280;
+}
+
 body {
   margin: 0;
   background: #F4F5F6;
@@ -14,75 +22,112 @@ body {
 h1 {
   font-size: 22px;
   font-weight: 600;
-  margin: 0 0 24px;
+  margin: 0;
 }
 
+.page__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+}
+
+.nav__link,
+.back {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.nav__link:hover,
+.back:hover {
+  color: #1F2933;
+  text-decoration: underline;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 16px 0;
+}
+
+/* Ampelpunkt */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot--ok { background: var(--ok); }
+.dot--warn { background: var(--warn); }
+.dot--alarm { background: var(--alarm); }
+
+/* Kacheln */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
-  margin-bottom: 32px;
 }
 
 .tile {
+  display: block;
   background: #FFFFFF;
-  border: 1px solid #DFE4E7;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
   padding: 16px 18px;
+  color: inherit;
+  text-decoration: none;
 }
 
-.tile--alarm {
-  border-color: #B91C1C;
+.tile:hover {
+  border-color: #B9C2C7;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tile--warn { border-left-color: var(--warn); }
+.tile--alarm { border-left-color: var(--alarm); }
+
+.tile__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tile__id {
-  font-size: 14px;
-  color: #6B7280;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tile__type {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
 }
 
 .tile__value {
   font-size: 30px;
   font-weight: 600;
-  margin: 6px 0;
+  margin: 10px 0 4px;
+  font-variant-numeric: tabular-nums;
 }
 
-.tile__status {
-  font-size: 14px;
-}
-
-.tile__warning {
+.tile__state {
   font-size: 13px;
-  color: #B91C1C;
-  min-height: 18px;
+  color: var(--muted);
 }
 
-.picker {
-  max-width: 220px;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-
-/* Tabs */
-.tabs {
-  margin-bottom: 24px;
-}
-
-.hint {
-  font-size: 13px;
-  color: #6B7280;
-  margin: 16px 0;
-}
-
-/* Kachel-Details */
-.tile__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.tile__type {
-  font-size: 12px;
-  color: #6B7280;
-}
+.tile__state--warn { color: var(--warn); }
+.tile__state--alarm { color: var(--alarm); font-weight: 500; }
 
 .tile__facts {
   display: grid;
@@ -90,16 +135,59 @@ h1 {
   gap: 3px 12px;
   margin: 12px 0 0;
   padding-top: 12px;
-  border-top: 1px solid #DFE4E7;
+  border-top: 1px solid var(--border);
   font-size: 13px;
 }
 
 .tile__facts dt {
-  color: #6B7280;
+  color: var(--muted);
 }
 
 .tile__facts dd {
   margin: 0;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Detailseite */
+.detail__title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 12px 0 16px;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  padding: 12px 18px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.banner--warn { border-left-color: var(--warn); color: var(--warn); }
+.banner--alarm { border-left-color: var(--alarm); color: var(--alarm); }
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 20px;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
