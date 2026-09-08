@@ -86,6 +86,10 @@ machine_stream = (stream
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
 )
 
+# erstellt einen neuen Streaming-DataFrame für die Bronze-Daten
+bronze_stream = (machine_stream
+                    .withColumn("event_date", to_date(col("timestamp"))))
+
 debug_input_query = (
     machine_stream.writeStream
     .format("console")
@@ -149,6 +153,10 @@ checkpoint_path = f"{checkpoint_dir}/machine-metrics"
 status_path = f"s3a://{minio_data_bucket}/silver/machine-status"
 status_checkpoint_path = f"{checkpoint_dir}/machine-status"
 
+# Pfad für die Rohdaten der Maschinenmetriken
+bronze_path = f"s3a://{minio_data_bucket}/bronze/machine-events"
+bronze_checkpoint_path = f"{checkpoint_dir}/machine-events"
+
 # schreibt den aktuellen Status aller Maschinen nach MinIO
 def write_status_to_minio(batch_df, batch_id):
     (batch_df.write
@@ -156,12 +164,32 @@ def write_status_to_minio(batch_df, batch_id):
      .parquet(status_path)
     )
 
-# gibt die 10-ekunden-Aggregation nach MinIO aus
-silver_query = (silver_stream.writeStream
+# schreibt die Rohdaten der Maschinenmetriken nach MinIO
+bronze_query = (bronze_stream.writeStream
                 .format("parquet")
                 .outputMode("append")
+                .option("path", bronze_path)
+                .option("checkpointLocation", bronze_checkpoint_path)
+                .partitionBy("event_date")
+                .start()
+                )
+
+def write_silver_to_minio(batch_df, batch_id):
+    if batch_df.isEmpty():
+        print(f"Silver batch {batch_id}: leer, wird nicht geschrieben")
+        return
+
+    (
+        batch_df.write
+        .mode("append")
+        .parquet(silver_path)
+    )
+    
+# gibt die 10-ekunden-Aggregation nach MinIO aus
+silver_query = (silver_stream.writeStream
+                .foreachBatch(write_silver_to_minio)
+                .outputMode("append")
                 .trigger(processingTime="10 seconds")
-                .option("path", silver_path)
                 .option("checkpointLocation", checkpoint_path)
                 .start()
                 )
