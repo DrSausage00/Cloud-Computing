@@ -13,3 +13,7 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 terraform/generated-inventory.yml
+
+# ansible
+ansible/kubeconfig-mes.yaml
+*.kubeconfig

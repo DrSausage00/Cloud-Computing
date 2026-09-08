@@ -1,0 +1,44 @@
+---
+- name: Wait for SSH and cloud-init to complete
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Wait for cloud-init to finish
+      ansible.builtin.raw: cloud-init status --wait
+      changed_when: false
+
+- name: Deploy K3s
+  hosts: all
+  become: true
+  roles:
+    - role: k3s-dhbw-cloud-role
+
+- name: Label nodes with simulated availability zones
+  hosts: gridflex_k3s_server
+  become: true
+  tasks:
+    - name: Get all cluster nodes
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+      register: cluster_nodes
+
+    - name: Label each node with its own availability zone
+      kubernetes.core.k8s:
+        state: patched
+        api_version: v1
+        kind: Node
+        name: "{{ item }}"
+        definition:
+          metadata:
+            labels:
+              topology.kubernetes.io/zone: "region-{{ 'abc'[zone_index % 3] }}"
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+      loop: "{{ cluster_nodes.resources | map(attribute='metadata.name') | list }}"
+      loop_control:
+        index_var: zone_index

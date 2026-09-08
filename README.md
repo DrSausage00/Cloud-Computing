@@ -148,6 +148,75 @@ lesen. Die Partitionszahl ist damit gleichzeitig die Obergrenze der Parallelitä
 
 
 
+## 9. Deployment-Anleitung
+
+### Voraussetzungen
+
+| Werkzeug | Zweck |
+|---|---|
+| Docker | Images bauen |
+| kubectl, Helm, Ansible | Deployment |
+| minikube | lokale Entwicklungsumgebung |
+| Terraform, OpenStack-CLI | Cluster in der DHBW Cloud |
+
+### DHBW Cloud
+
+**1. Zugang.** Die Cloud ist nur aus dem DHBW-Netz erreichbar (Eduroam oder VPN) und rein IPv6.
+Die Anmeldung von Werkzeugen erfolgt über ein **Application Credential**, nicht über Benutzername
+und Passwort — die Anmeldung an der Weboberfläche läuft über SSO, ein Passwort existiert dafür
+nicht. Die erzeugte `clouds.yaml` liegt außerhalb des Repositories.
+
+**2. Infrastruktur.** Details dazu in [`terraform/README.md`](../../../terraform/README.md).
+
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+Erzeugt drei VMs im Netz `DHBWV6` — einen Master (`general.medium`, 4 vCPU) und zwei Worker
+(`general.small`, 2 vCPU, macht 8 vCPU insgesamt) — und schreibt aus deren Adressen unmittelbar
+das Ansible-Inventar sowie `cluster.env`. Das ist der Kern des Infrastructure-as-Code-Gedankens:
+**Die Ausgabe des einen Werkzeugs ist die Eingabe des nächsten**, es wird keine Adresse von Hand
+übertragen.
+
+Sechs Anpassungen gegenüber der Vorlage aus dem Übungs-Track waren nötig:
+
+| | Vorlage | Hier | Warum |
+|---|---|---|---|
+| Anmeldung | Benutzer + Passwort | Application Credential | SSO, es gibt kein Passwort mehr |
+| Netz | `DHBW-1-Upper` | `DHBWV6` | in der neuen Cloud umbenannt |
+| Image | feste `image_id` | Auflösung über den Namen | die IDs der Vorlage existieren nicht mehr; die DHBW ersetzt Images regelmäßig |
+| Flavor | `m1.extra_large` (8 vCPU) für alle Knoten | `general.medium`/`general.small` | 3 × 8 vCPU je Gruppe erschöpften das gemeinsame Projektkontingent (100 vCPU für den ganzen Kurs) |
+| Adressen | `fixed_ip_v4` | `fixed_ip_v6`, `ip_family: ipv6` | die privaten IPv4 sind von außen nicht erreichbar |
+| Kontingent nachträglich anpassen | — | `terraform apply -replace=<resource>` | OpenStack erlaubt Resize nur nach oben; Disk-Verkleinerung braucht einen Neubau |
+
+**3. Kubernetes.** k3s wird nicht manuell installiert, sondern über die offizielle, öffentlich
+verfügbare Ansible-Rolle
+[`k3s-dhbw-cloud-role`](https://github.com/pfisterer/k3s-dhbw-cloud-role) — verlinkt aus der
+Vorlesung „Cloud Infrastructures and Cloud Native Applications":
+
+```bash
+ansible-galaxy install -r requirements.yml
+ansible-galaxy collection install kubernetes.core
+ansible-playbook ansible/playbook.yml \
+  -i terraform/generated-inventory.yml \
+  -i ansible/overrides.yml
+```
+
+Die Rolle erkennt IPv4/IPv6 automatisch (`ip_family: auto`), installiert k3s als Server auf dem
+Master und als Agent auf den Workern, und liefert eine fertig adressierte Kubeconfig. Zwei
+Standardeinstellungen wurden bewusst überschrieben: **Longhorn** (repliziertes Storage,
+automatisch an bei drei Knoten) ist aus — bei 124 MB Tagesvolumen unnötiger Ausfallpunkt — und
+**automatische nächtliche k3s-Updates** sind aus, damit kein Cluster-Neustart mitten in die
+Projektwoche fällt.
+
+### Abbau
+
+```bash
+cd terraform && terraform destroy
+```
 
 
 ## 12. Grenzen und Ausblick
