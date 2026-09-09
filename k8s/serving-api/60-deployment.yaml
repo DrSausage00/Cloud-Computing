@@ -33,7 +33,8 @@ spec:
               path: /metrics/latest     # TBD: replace when ready function exists
               port: 8000
             initialDelaySeconds: 10
-            periodSeconds: 10
+            periodSeconds: 15
+            failureThreshold: 5
           livenessProbe:
             httpGet:
               path: /docs     # TBD: replace when live path (health) exists
