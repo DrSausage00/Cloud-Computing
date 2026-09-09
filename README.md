@@ -193,6 +193,42 @@ wiederholen lässt.
 
 ---
 
+## 7. User-facing UI
+
+Die Weboberfläche zeigt die Maschinenübersicht der Pipeline live an — eine Kachel je Maschine
+mit den aktuellen Aggregatwerten aus der Silver-Schicht, dazu ein Temperaturverlauf im Detail.
+
+**Datenanbindung.** Die UI spricht ausschließlich mit der Serving-API (`GET /metrics/latest` für
+die Übersicht, `GET /metrics/history` für den Verlauf) — kein direkter Zugriff auf Kafka, Spark
+oder MinIO. Das hält das Architekturdiagramm konsistent zum tatsächlichen Datenfluss.
+
+| Element | Feld | Warum es überzeugt |
+|---|---|---|
+| Kachel je Maschine | `machine_id`, `machine_type` | zeigt, dass alle drei Rohformate ankommen |
+| Aktuelle Temperatur | `avg_temperature`, `min_temperature`, `max_temperature` | zeigt die Aggregation |
+| **Warnung bei Überhitzung** | `limit_exceeded` | zeigt die ConfigMap-Anreicherung |
+| Status | `last_status` | zeigt den Streaming-State |
+| Messwerte im Fenster | `event_count` | zeigt Windowing und Datenausfall |
+| Zeitreihe | `/metrics/history` | zeigt das Data Lake |
+
+Die Warnung bei `limit_exceeded` ist das stärkste Element: Sie beweist in einem einzigen
+Screenshot, dass ein Wert aus einer Kubernetes-ConfigMap durch einen Spark-Job bis in die
+Oberfläche wirkt.
+
+**Bedienablauf.** Übersichtsseite mit allen Maschinen als Kacheln (Ampel-Farbe nach Status/
+`limit_exceeded`) — Klick auf eine Kachel führt zur Detailseite dieser einen Maschine mit
+Temperaturverlauf. Echte Navigation über die URL (`/machine/<id>`), kein Dropdown-Zustand auf
+einer einzelnen Seite.
+
+---
+
+**Notiz für dich (nicht Teil der README):** Diese Datei geht davon aus, dass die Endpunkt-Namen
+in `guide-10-ui.md` noch nicht korrigiert wurden (Stand als dieser Ordner angelegt wurde). Prüf
+das kurz, bevor du kopierst — falls ich es zwischenzeitlich gefixt habe, ist dieser Hinweis
+hinfällig und du kannst ihn ignorieren.
+
+---
+
 ## 9. Deployment-Anleitung
 
 ### Voraussetzungen
