@@ -222,13 +222,6 @@ einer einzelnen Seite.
 
 ---
 
-**Notiz für dich (nicht Teil der README):** Diese Datei geht davon aus, dass die Endpunkt-Namen
-in `guide-10-ui.md` noch nicht korrigiert wurden (Stand als dieser Ordner angelegt wurde). Prüf
-das kurz, bevor du kopierst — falls ich es zwischenzeitlich gefixt habe, ist dieser Hinweis
-hinfällig und du kannst ihn ignorieren.
-
----
-
 ## 9. Deployment-Anleitung
 
 ### Voraussetzungen
