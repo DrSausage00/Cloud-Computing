@@ -17,28 +17,29 @@ spec:
     spec:
       containers:
         - name: serving-api
-          image: nginx:alpine
+          image: mes/serving-api:0.1
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 80
+            - containerPort: 8000
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 100m
+              memory: 256Mi
             limits:
-              cpu: 200m
-              memory: 128Mi
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
-              path: /     # aaron api ready path
-              port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 5
+              path: /metrics/latest     # TBD: replace when ready function exists
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /     # aaron api live path (health)
-              port: 80
+              path: /docs     # TBD: replace when live path (health) exists
+              port: 8000
             initialDelaySeconds: 10
-            periodSeconds: 15
+            periodSeconds: 30
           envFrom:
             - configMapRef:
                 name: pipeline-config
