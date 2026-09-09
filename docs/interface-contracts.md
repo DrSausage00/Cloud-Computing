@@ -24,6 +24,7 @@ Ingestion -> Kafka topic machine-events -> Stream Processing -> MinIO -> Serving
   },
   "schema_version": "string"
 }
+```
 
 Alle Felder unter measurements nullable — jeder Maschinentyp liefert nur einen Teil davon
 (A: temperature/pressure/rotation_speed/power_consumption; B: temperature/vibration;
@@ -103,6 +104,7 @@ Keine, in keiner Komponente.
 | `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | Ingestion, Stream Processing |
 | `TEMP_LIMIT` | `85` | Stream Processing |
 | `SPARK_CHECKPOINT_DIR` | `s3a://spark-checkpoints/checkpoints` | Stream Processing |
+| `SPARK_CHECKPOINT_BUCKET` | `spark-checkpoints` | Bucket-Job (Guide 07) |
 | `MINIO_ENDPOINT` | `http://minio:9000` | Stream Processing, Serving-API |
 | `MINIO_DATA_BUCKET` | `mes-data` | Stream Processing, Serving-API |
 | `POLL_INTERVAL_SECONDS` | `5` | UI |
