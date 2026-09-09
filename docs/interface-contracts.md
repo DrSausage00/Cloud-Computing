@@ -61,6 +61,24 @@ C: temperature/status).
 | `GET /metrics/history?machine_id=<id>&minutes=<n>` | Zeitreihe, Default `minutes=15` |
 | Health | keine Route |
 
+### Antwortschema (`/metrics/latest`, je Objekt in `/metrics/history`)
+
+```json
+{
+  "machine_id": "string",
+  "machine_type": "string",
+  "window_start": "ISO-8601",
+  "window_end": "ISO-8601",
+  "avg_temperature": 0.0,
+  "min_temperature": 0.0,
+  "max_temperature": 0.0,
+  "event_count": 0,
+  "last_status": "string | null",
+  "temperature_limit": 0.0,
+  "limit_exceeded": true
+}
+```
+
 ## UI (Max)
 
 | Vertrag | Wert |
