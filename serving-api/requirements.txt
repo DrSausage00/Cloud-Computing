@@ -3,3 +3,4 @@ uvicorn[standard]
 pandas
 pyarrow
 s3fs
+redis
