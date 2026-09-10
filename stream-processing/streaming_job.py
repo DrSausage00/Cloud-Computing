@@ -182,6 +182,7 @@ def write_silver_to_minio(batch_df, batch_id):
     (
         batch_df.write
         .mode("append")
+        .partitionBy("machine_type", "event_date")
         .parquet(silver_path)
     )
     
