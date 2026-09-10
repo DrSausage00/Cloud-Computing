@@ -1,36 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
+  ports:
+    - name: api
+      port: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: minio
-  namespace: mes
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: minio
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 4 }}
 spec:
   serviceName: minio-headless
-  replicas: 4
+  replicas: {{ .Values.minio.replicaCount }}
   selector:
     matchLabels:
-      app: minio
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 6 }}
   template:
     metadata:
       labels:
-        app: minio
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "minio") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: minio
-          image: docker.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          image: {{ .Values.minio.image | quote }}
           ports:
             - containerPort: 9000
               name: api
             - containerPort: 9001
               name: console
           resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+            {{- toYaml .Values.minio.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /minio/health/ready
@@ -46,9 +77,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-          args: 
+          args:
             - server
-            - "http://minio-{0...3}.minio-headless.mes.svc.cluster.local/data"
+            - "http://minio-{0...{{ sub (.Values.minio.replicaCount | int) 1 }}}.minio-headless.{{ .Release.Namespace }}.svc.cluster.local/data"
             - "--console-address"
             - ":9001"
           envFrom:
@@ -61,4 +92,37 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 10Gi
+            storage: {{ .Values.minio.storage }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-buckets
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-buckets
+          image: minio/mc:latest
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: minio-credentials
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+                echo "MinIO noch nicht bereit..."; sleep 2
+              done
+              mc mb --ignore-existing "local/$MINIO_DATA_BUCKET"
+              mc mb --ignore-existing "local/$SPARK_CHECKPOINT_BUCKET"
+              echo "Buckets angelegt: $MINIO_DATA_BUCKET, $SPARK_CHECKPOINT_BUCKET"
