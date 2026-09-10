@@ -2,32 +2,29 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ingestion
-  namespace: mes
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: ingestion
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.ingestion.replicaCount }}
   selector:
     matchLabels:
-      app: ingestion
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 6 }}
   template:
     metadata:
       labels:
-        app: ingestion
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       containers:
         - name: ingestion
-          image: mes/ingestion:0.1
-          imagePullPolicy: IfNotPresent
+          image: {{ include "mes.image" (dict "ctx" . "image" .Values.ingestion.image "tag" .Values.ingestion.tag) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: 80
           resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 300m
-              memory: 256Mi
+            {{- toYaml .Values.ingestion.resources | nindent 12 }}
           livenessProbe:
             exec:
               command: ["sh", "-c", "pgrep -f main.py > /dev/null"]
