@@ -90,15 +90,6 @@ machine_stream = (stream
 bronze_stream = (machine_stream
                     .withColumn("event_date", to_date(col("timestamp"))))
 
-debug_input_query = (
-    machine_stream.writeStream
-    .format("console")
-    .outputMode("append")
-    .trigger(processingTime="10 seconds")
-    .option("truncate", "false")
-    .start()
-)
-
 # merkt sich den zuletzt bekannten Status jeder Maschine
 status_stream = (machine_stream
                  .filter(col("status").isNotNull())
@@ -134,15 +125,6 @@ silver_stream = (aggregated_stream
 
                   # Prüfen, ob die maximale Termperatur den Grenzwert überschritten hat
                   .withColumn("limit_exceeded", col("max_temperature") > col("temperature_limit"))
-)
-
-debug_silver_query = (
-    silver_stream.writeStream
-    .format("console")
-    .outputMode("update")
-    .trigger(processingTime="10 seconds")
-    .option("truncate", "false")
-    .start()
 )
 
 # Pfad für die aggregierten 10-Sekunden-Maschinenmetriken
@@ -182,7 +164,7 @@ def write_silver_to_minio(batch_df, batch_id):
     (
         batch_df.write
         .mode("append")
-        .partitionBy("machine_type", "event_date")
+        .partitionBy("machine_type", "event_date") # partitioniert die Daten nach Maschinen-Typ und Datum
         .parquet(silver_path)
     )
     
