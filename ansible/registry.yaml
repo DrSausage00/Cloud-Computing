@@ -54,8 +54,6 @@ kind: Ingress
 metadata:
   name: registry
   namespace: default
-  annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: default-registry-body-size@kubernetescrd
 spec:
   rules:
     - host: "registry.s241319-at-student-dhbw-mannheim-de.users.dhbw.site"
