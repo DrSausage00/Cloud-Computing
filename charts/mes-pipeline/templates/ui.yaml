@@ -1,33 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "ui") | nindent 4 }}
+spec:
+  type: {{ .Values.ui.service.type }}
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "ui") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8050
+      targetPort: 8050
+      {{- if and (eq .Values.ui.service.type "NodePort") .Values.ui.service.nodePort }}
+      nodePort: {{ .Values.ui.service.nodePort }}
+      {{- end }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ui
-  namespace: mes
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: ui
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "ui") | nindent 4 }}
 spec:
-  replicas: 2
+  replicas: {{ .Values.ui.replicaCount }}
   selector:
     matchLabels:
-      app: ui
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "ui") | nindent 6 }}
   template:
     metadata:
       labels:
-        app: ui
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "ui") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       containers:
         - name: ui
-          image: mes/ui:0.1
-          imagePullPolicy: IfNotPresent
+          image: {{ include "mes.image" (dict "ctx" . "image" .Values.ui.image "tag" .Values.ui.tag) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: 8050
           resources:
-            requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 300m
-              memory: 256Mi
+            {{- toYaml .Values.ui.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /health
@@ -45,3 +61,29 @@ spec:
           envFrom:
             - configMapRef:
                 name: pipeline-config
+---
+{{- if .Values.ui.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [{{ .Values.ui.ingress.host | quote }}]
+      secretName: ui-tls
+  rules:
+    - host: {{ .Values.ui.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port:
+                  number: 8050
+{{- end }}
