@@ -54,6 +54,11 @@ spec:
             periodSeconds: 15
             failureThreshold: 5
           env:
+            {{- $ns := .Release.Namespace }}
+            {{- $voters := list }}
+            {{- range $i := until (.Values.kafka.replicaCount | int) }}
+            {{- $voters = append $voters (printf "%d@kafka-%d.kafka.%s.svc.cluster.local:9093" $i $i $ns) }}
+            {{- end }}
             - name: KAFKA_PROCESS_ROLES
               value: "broker,controller"
             - name: KAFKA_LISTENERS
@@ -63,13 +68,7 @@ spec:
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: >-
-                {{- $ns := .Release.Namespace -}}
-                {{- $voters := list -}}
-                {{- range $i := until (.Values.kafka.replicaCount | int) }}
-                {{- $voters = append $voters (printf "%d@kafka-%d.kafka.%s.svc.cluster.local:9093" $i $i $ns) -}}
-                {{- end }}
-                {{- join "," $voters }}
+              value: {{ join "," $voters | quote }}
             - name: CLUSTER_ID
               value: "MkU3OEVBNTcwNTJENDM2Qk"
             - name: KAFKA_HEAP_OPTS
