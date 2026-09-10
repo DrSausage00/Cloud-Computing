@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: {{ .Release.Namespace }}
+data:
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.pipeline.kafkaBootstrapServers | quote }}
+  TEMP_LIMIT: {{ .Values.pipeline.tempLimit | quote }}
+  MINIO_ENDPOINT: {{ .Values.pipeline.minioEndpoint | quote }}
+  MINIO_DATA_BUCKET: {{ .Values.pipeline.minioDataBucket | quote }}
+  SPARK_CHECKPOINT_BUCKET: {{ .Values.pipeline.sparkCheckpointBucket | quote }}
+  SPARK_CHECKPOINT_DIR: {{ .Values.pipeline.sparkCheckpointDir | quote }}
+  USE_MOCK: {{ .Values.pipeline.useMock | quote }}
+  API_BASE_URL: {{ .Values.pipeline.apiBaseUrl | quote }}
+  POLL_INTERVAL_SECONDS: {{ .Values.pipeline.pollIntervalSeconds | quote }}
+  HISTORY_MINUTES: {{ .Values.pipeline.historyMinutes | quote }}
+  S3_CONNECT_TIMEOUT: {{ .Values.pipeline.s3ConnectTimeout | quote }}
+  S3_READ_TIMEOUT: {{ .Values.pipeline.s3ReadTimeout | quote }}
+  S3_RETRY_MAX_ATTEMPTS: {{ .Values.pipeline.s3RetryMaxAttempts | quote }}
+  S3_USE_LISTINGS_CACHE: {{ .Values.pipeline.s3UseListingsCache | quote }}
+  S3_CACHE_TTL_SECONDS: {{ .Values.pipeline.s3CacheTtlSeconds | quote }}
+  API_TIMEOUT_SECONDS: {{ .Values.pipeline.apiTimeoutSeconds | quote }}
+  CACHE_TTL_SECONDS: {{ .Values.pipeline.cacheTtlSeconds | quote }}
