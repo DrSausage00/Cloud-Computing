@@ -5,17 +5,24 @@ Solange Serving-API noch nicht steht, liefert dieses Modul noch
 erfundene Daten im Format der Tabelle `silver_machine_metrics`
 (siehe ingestion/storage/schema.sql).
 
-Umstellung auf die echte API kommt spaeter.
 """
 
 import os
 import random
+import time
 from datetime import datetime, timedelta, UTC
 
 import requests
 
 USE_MOCK = os.getenv("USE_MOCK", "true").lower() == "true"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://serving-api:8000")
+
+API_TIMEOUT_SECONDS = int(os.getenv("API_TIMEOUT_SECONDS", "10"))
+
+# Kurzer Cache: mehrere offene Browser-Fenster sind je eine eigene
+# Dash-Session und fragen unabhaengig voneinander an. Der Cache buendelt
+# das zu einer echten Anfrage je Intervall.
+CACHE_TTL_SECONDS = float(os.getenv("CACHE_TTL_SECONDS", "3"))
 
 WINDOW_SECONDS = 10
 TEMPERATURE_LIMIT = 95.0
@@ -84,8 +91,35 @@ def _advance_mock() -> None:
         _history.pop(0)
 
 
+# --------------------------------------------------------------------
+# Cache
+# --------------------------------------------------------------------
+
+_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _cached(key: str, fetch):
+    """Liefert das Ergebnis aus dem Cache, solange es frisch genug ist."""
+    now = time.time()
+    entry = _cache.get(key)
+    if entry and now - entry[0] < CACHE_TTL_SECONDS:
+        return entry[1]
+
+    result = fetch()
+    _cache[key] = (now, result)
+    return result
+
+
+# --------------------------------------------------------------------
+# Abfragen
+# --------------------------------------------------------------------
+
 def fetch_latest() -> list[dict]:
-    """Neuestes Zeitfenster je Maschine. Fuer die Live-Kacheln."""
+    """Neuestes Zeitfenster je Maschine. Fuer die Kacheln."""
+    return _cached("latest", _fetch_latest)
+
+
+def _fetch_latest() -> list[dict]:
     if USE_MOCK:
         _seed_mock()
         _advance_mock()
@@ -95,26 +129,28 @@ def fetch_latest() -> list[dict]:
             newest[row["machine_id"]] = row
         return list(newest.values())
 
-    response = requests.get(f"{API_BASE_URL}/metrics/latest", timeout=5)
-    response.raise_for_status()
-    return response.json()
-
-
-def fetch_machine_ids() -> list[str]:
-    """Welche Maschinen liefern gerade Daten? Fuellt das Dropdown."""
-    return sorted({row["machine_id"] for row in fetch_latest()})
-
-
-def fetch_history_all(minutes: int = 15) -> list[dict]:
-    """Alle Fenster aller Maschinen. Fuer die Tabelle."""
-    rows: list[dict] = []
-    for machine_id in fetch_machine_ids():
-        rows.extend(fetch_history(machine_id, minutes=minutes))
-    return sorted(rows, key=lambda r: r["window_start"], reverse=True)
+    # Bei einem Ausfall der API (Fehlercode, Timeout, keine Verbindung)
+    # zeigt die UI "keine Daten" statt eine Fehlerseite.
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/metrics/latest",
+            timeout=API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
 
 
 def fetch_history(machine_id: str, minutes: int = 15) -> list[dict]:
     """Zeitreihe einer Maschine. Fuer den Verlaufs-Chart."""
+    return _cached(
+        f"history:{machine_id}:{minutes}",
+        lambda: _fetch_history(machine_id, minutes),
+    )
+
+
+def _fetch_history(machine_id: str, minutes: int) -> list[dict]:
     if USE_MOCK:
         _seed_mock()
         cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
@@ -125,10 +161,26 @@ def fetch_history(machine_id: str, minutes: int = 15) -> list[dict]:
             and datetime.fromisoformat(row["window_start"]) >= cutoff
         ]
 
-    response = requests.get(
-        f"{API_BASE_URL}/metrics/history",
-        params={"machine_id": machine_id, "minutes": minutes},
-        timeout=5,
-    )
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/metrics/history",
+            params={"machine_id": machine_id, "minutes": minutes},
+            timeout=API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
+
+
+def fetch_machine_ids() -> list[str]:
+    """Welche Maschinen liefern gerade Daten?"""
+    return sorted({row["machine_id"] for row in fetch_latest()})
+
+
+def fetch_history_all(minutes: int = 15) -> list[dict]:
+    """Alle Fenster aller Maschinen. Fuer die Tabelle."""
+    rows: list[dict] = []
+    for machine_id in fetch_machine_ids():
+        rows.extend(fetch_history(machine_id, minutes=minutes))
+    return sorted(rows, key=lambda r: r["window_start"], reverse=True)
