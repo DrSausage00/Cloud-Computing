@@ -8,6 +8,7 @@ metadata:
 spec:
   serviceName: kafka
   replicas: 3
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app: kafka
@@ -66,11 +67,11 @@ spec:
             - name: KAFKA_LOG_RETENTION_HOURS
               value: "168"
           command: ["bash", "-c"]
-            args:
-              - |
-                export KAFKA_NODE_ID="${HOSTNAME##*-}"
-                export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${HOSTNAME}.kafka.mes.svc.cluster.local:9092"
-                exec /etc/confluent/docker/run
+          args:
+            - |
+              export KAFKA_NODE_ID="${HOSTNAME##*-}"
+              export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${HOSTNAME}.kafka.mes.svc.cluster.local:9092"
+              exec /etc/confluent/docker/run
 
           volumeMounts:
             - name: data

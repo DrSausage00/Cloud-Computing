@@ -3,12 +3,12 @@ kind: Service
 metadata:
   name: minio-headless
   namespace: mes
-  lables:
+  labels:
     app: minio
-  spec:
-    clusterIP: None
-    selector:
-      app: minio
-    ports:
-      - name: api
-        port: 9000
+spec:
+  clusterIP: None
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
