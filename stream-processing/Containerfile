@@ -5,7 +5,6 @@ USER root
 WORKDIR /app
 
 COPY streaming_job.py /app/streaming_job.py
-COPY minio_test.py /app/minio_test.py
 
 USER spark
 

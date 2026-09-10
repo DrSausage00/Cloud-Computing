@@ -1,4 +1,3 @@
-
 # Stream Processing
 stream-processing/checkpoints/
 stream-processing/.venv/
@@ -6,7 +5,20 @@ stream-processing/hadoop/
 
 # Python stuff
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+
+# secrets
+.env
+*.local.yaml
+k8s/config/11-secret.yaml
+
+# editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
 
 # terraform
 .terraform/
@@ -17,3 +29,8 @@ terraform/generated-inventory.yml
 # ansible
 ansible/kubeconfig-mes.yaml
 *.kubeconfig
+
+# spark
+spark-warehouse/
+metastore_db/
+derby.log

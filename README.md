@@ -13,6 +13,8 @@
 - [11. Screenshots und Nachweise](#11-screenshots-und-nachweise)
 - [12. Grenzen und Ausblick](#12-grenzen-und-ausblick)
 
+---
+
 ## 1. Use Case und Motivation
 
 Eine Fertigung betreibt Maschinen unterschiedlicher Generationen und Hersteller. Jede meldet
@@ -35,6 +37,7 @@ sondern wegen der Struktur des Problems:
 
 Die Architektur ist damit auf ein Volumen ausgelegt, das der Prototyp bewusst nicht erzeugt.
 
+---
 
 ## 2. Datencharakteristik
 
@@ -79,6 +82,7 @@ Nicht jedes Ereignis trägt jedes Feld. Nur Maschinentyp C meldet einen Status, 
 Vibration sind nicht bei allen Typen vorhanden. Die Verarbeitung muss mit fehlenden Feldern
 umgehen, statt sie vorauszusetzen.
 
+---
 
 ## 3. Architekturentscheidung: Kappa
 
@@ -116,6 +120,7 @@ Ablage der Rohereignisse nötig.
 Vier von fünf Schichten sind besetzt. Die beiden offenen sind der Grund, warum wir kein ACID und
 keine Schema-Evolution haben — siehe §12.
 
+---
 
 ## 4. Komponenten und Datenfluss
 
@@ -145,8 +150,99 @@ wiederholen.
 bleibt die zeitliche Reihenfolge je Maschine garantiert, auch wenn mehrere Konsumenten parallel
 lesen. Die Partitionszahl ist damit gleichzeitig die Obergrenze der Parallelität.
 
+---
 
+## 5. Processing-Logik
 
+Der Streaming-Job liest aus Kafka, aggregiert über Event-Time-Fenster und schreibt nach MinIO.
+Stand 07.09.2026 umfasst er:
+
+| Baustein | Umsetzung |
+|---|---|
+| Fenster | 10 Sekunden über Event-Time |
+| Late Data | Watermark von 20 Sekunden |
+| Aggregate | Durchschnitts-, Minimal- und Maximaltemperatur, Event Count |
+| State | letzter bekannter Maschinenstatus |
+| Anreicherung | Grenzwert `TEMP_LIMIT` aus der ConfigMap, Flag `limit_exceeded` |
+| Ausgabe | Parquet in `mes-data/silver/machine-metrics` |
+| Wiederanlauf | Checkpoints in `spark-checkpoints`, je Query ein eigener Pfad |
+
+**Warum Event-Time und nicht Verarbeitungszeit.** Ein Ereignis, das wegen einer Netzstörung
+zehn Sekunden später ankommt, gehört fachlich in das Fenster seiner Entstehung, nicht in das
+seiner Ankunft. Nur so bleiben die Aggregate über Wiederholungen hinweg identisch.
+
+**Warum eine Watermark nötig ist.** Ohne sie müsste Spark jedes Fenster unbegrenzt offen halten,
+falls doch noch ein spätes Ereignis kommt — der Zustand würde monoton wachsen. Die Watermark ist
+die explizite Zusage: Nach 20 Sekunden wird ein Fenster geschlossen, Späteres wird verworfen.
+
+---
+
+## 6. Speicherkonzept
+
+### Format
+
+**Parquet.** Spaltenorientiert, komprimiert und mit eingebettetem Schema. Für die Abfragen der
+Serving-API — „Durchschnittstemperatur je Maschine der letzten Stunde" — werden nur wenige
+Spalten gelesen; ein zeilenorientiertes Format wie CSV oder JSON müsste jedes Mal alles lesen.
+
+### Retention
+
+Kafka hält die Rohereignisse 7 Tage (168 h). Das ist gleichzeitig unsere Bronze-Schicht
+(siehe §3) und das Zeitfenster, innerhalb dessen sich eine Verarbeitung per Offset-Reset
+wiederholen lässt.
+
+---
+
+## 7. User-facing UI
+
+Die Weboberfläche zeigt die Maschinenübersicht der Pipeline live an — eine Kachel je Maschine
+mit den aktuellen Aggregatwerten aus der Silver-Schicht, dazu ein Temperaturverlauf im Detail.
+
+**Datenanbindung.** Die UI spricht ausschließlich mit der Serving-API (`GET /metrics/latest` für
+die Übersicht, `GET /metrics/history` für den Verlauf) — kein direkter Zugriff auf Kafka, Spark
+oder MinIO. Das hält das Architekturdiagramm konsistent zum tatsächlichen Datenfluss.
+
+| Element | Feld | Warum es überzeugt |
+|---|---|---|
+| Kachel je Maschine | `machine_id`, `machine_type` | zeigt, dass alle drei Rohformate ankommen |
+| Aktuelle Temperatur | `avg_temperature`, `min_temperature`, `max_temperature` | zeigt die Aggregation |
+| **Warnung bei Überhitzung** | `limit_exceeded` | zeigt die ConfigMap-Anreicherung |
+| Status | `last_status` | zeigt den Streaming-State |
+| Messwerte im Fenster | `event_count` | zeigt Windowing und Datenausfall |
+| Zeitreihe | `/metrics/history` | zeigt das Data Lake |
+
+Die Warnung bei `limit_exceeded` ist das stärkste Element: Sie beweist in einem einzigen
+Screenshot, dass ein Wert aus einer Kubernetes-ConfigMap durch einen Spark-Job bis in die
+Oberfläche wirkt.
+
+**Bedienablauf.** Übersichtsseite mit allen Maschinen als Kacheln (Ampel-Farbe nach Status/
+`limit_exceeded`) — Klick auf eine Kachel führt zur Detailseite dieser einen Maschine mit
+Temperaturverlauf. Echte Navigation über die URL (`/machine/<id>`), kein Dropdown-Zustand auf
+einer einzelnen Seite.
+
+---
+
+## 8. Kubernetes-Deployment
+
+**Aus der Aufgabenstellung:** „Skalierbarkeit: die Anwendung muss darauf ausgelegt sein, in
+allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
+
+| Komponente | Zustand | Mechanismus | Skalierungseinheit | Nachweis |
+|---|---|---|---|---|
+| Ingestion | zustandslos | Deployment-Replicas | Simulator-Instanz | `kubectl scale`, Offsets gemessen |
+| Serving-API | zustandslos | **HPA** auf CPU | HTTP-Request | `kubectl get hpa -w` |
+| UI | zustandslos | Deployment-Replicas | HTTP-Request | `kubectl scale` |
+| Stream Processing | Checkpoint in MinIO | **Spark-Executor-Pods** | **Kafka-Partition** | Executor-Pods erscheinen |
+| Kafka | StatefulSet + PVC | mehr Broker + mehr Partitionen | Partition | begründet, nicht vorgeführt |
+| MinIO | StatefulSet + PVC | Distributed Mode, Erasure Coding | Knoten | begründet, nicht vorgeführt |
+
+**Eine bewusste Grenze:** Mehr Spark-Executors als Kafka-Partitionen bringen nichts. Drei
+Partitionen heißen: sinnvolle Parallelität endet bei drei Executors. Wer weiter skalieren will,
+erhöht zuerst die Partitionszahl — nicht die Executor-Zahl.
+
+Bei genügend Last werden MinIO oder Kafka zum Engpass, nicht die Serving-API.
+
+---
 
 ## 9. Deployment-Anleitung
 

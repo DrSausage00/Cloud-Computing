@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-processing
+  namespace: mes
+  labels:
+    app: stream-processing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-processing
+  template:
+    metadata:
+      labels:
+        app: stream-processing
+    spec:
+      containers:
+        - name: stream-processing
+          image: mes/stream-processing:0.1
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1500m
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f streaming_job.py > /dev/null"]
+            initialDelaySeconds: 150
+            periodSeconds: 30
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: minio-credentials
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.home=/tmp"

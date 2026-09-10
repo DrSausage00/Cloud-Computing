@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-buckets
+  namespace: mes
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-buckets
+          image: minio/mc:latest
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: minio-credentials
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+                echo "MinIO noch nicht bereit..."; sleep 2
+              done
+              mc mb --ignore-existing "local/$MINIO_DATA_BUCKET"
+              mc mb --ignore-existing "local/$SPARK_CHECKPOINT_BUCKET"
+              echo "Buckets angelegt: $MINIO_DATA_BUCKET, $SPARK_CHECKPOINT_BUCKET"

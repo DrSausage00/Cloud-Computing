@@ -1,0 +1,25 @@
+# Diese .dockerignore Datei definiert, welche lokalen Dateien nicht in den Docker/Podman‑Build‑Kontext übernommen werden.
+# Dadurch wird der Build: schneller, sicherer, reproduzierbarer, schlanker und verhindert, dass unnötige oder sensible Dateien im Container landen.
+
+# Lokale virtuelle Python-Umgebung.
+# Enthält Dateien, die im Container nicht benötigt werden.
+# Würde den Build-Kontext massiv vergrößern und den Build verlangsamen.
+.venv/
+
+# Python-Cache-Verzeichnisse.
+# Werden automatisch neu erzeugt und haben im Container nichts zu suchen.
+__pycache__/
+
+# Kompilierte Python-Dateien.
+# Lokale Artefakte, die nicht in das Image gehören.
+*.pyc
+
+# Lokale Umgebungsvariablen.
+# Können sensible Zugangsdaten enthalten (MinIO, Tokens, Passwörter).
+# Dürfen NIEMALS in ein Container-Image gelangen.
+.env
+
+# Dokumentation.
+# Wird im Container nicht benötigt, da der Container nur Code ausführt.
+# Spart ein paar KB und hält das Image sauber.
+README.md

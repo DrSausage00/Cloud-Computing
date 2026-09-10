@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-api
+  namespace: mes
+  labels:
+    app: serving-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: serving-api
+  template:
+    metadata:
+      labels:
+        app: serving-api
+    spec:
+      containers:
+        - name: serving-api
+          image: mes/serving-api:0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 30
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: minio-credentials
