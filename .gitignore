@@ -15,6 +15,7 @@ venv/
 k8s/config/11-secret.yaml
 values-secret.yaml
 rendered.yaml
+ansible/secrets.yml
 
 # editor
 .DS_Store
