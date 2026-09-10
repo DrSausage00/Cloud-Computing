@@ -10,7 +10,7 @@ from parsers.csv_parser import parse_machine_a
 from parsers.json_parser import parse_machine_b
 from parsers.pipe_parser import parse_machine_c
 
-from producer.kafka_producer import send_event
+from producer.kafka_producer import flush_events, send_event
 
 
 MACHINE_A_COUNT = 10
@@ -39,6 +39,9 @@ def main():
         for event in events:
             print(json.dumps(asdict(event), indent=2))
             send_event("machine-events", event)
+
+        # Einmal je Durchlauf statt nach jeder Nachricht, damit Kafka buendeln kann.
+        flush_events()
 
         time.sleep(2)
 
