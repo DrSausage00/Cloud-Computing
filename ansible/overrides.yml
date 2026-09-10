@@ -5,11 +5,12 @@ all:
     longhorn_enabled: false
 
     k3s_auto_upgrade_enabled: false
+    ip_family: dual
 
     kubeconfig_path: "{{ playbook_dir }}/kubeconfig-mes.yaml"
 
     cert_manager_email: s241319@student.dhbw-mannheim.de
-    
+
     rfc2136_zone: s241319-at-student-dhbw-mannheim-de.users.dhbw.site
     rfc2136_dns_host: ns.cloud-ns.dhbw-mannheim.de.
     rfc2136_dns_port: 53
