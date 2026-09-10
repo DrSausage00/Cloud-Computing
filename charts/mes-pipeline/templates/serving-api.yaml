@@ -1,33 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: serving-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: serving-api
-  namespace: mes
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: serving-api
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
 spec:
-  replicas: 1
   selector:
     matchLabels:
-      app: serving-api
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 6 }}
   template:
     metadata:
       labels:
-        app: serving-api
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: serving-api
-          image: mes/serving-api:0.1
-          imagePullPolicy: IfNotPresent
+          image: {{ include "mes.image" (dict "ctx" . "image" .Values.servingApi.image "tag" .Values.servingApi.tag) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: 8000
           resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: 1000m
-              memory: 1Gi
+            {{- toYaml .Values.servingApi.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /ready
@@ -56,3 +69,28 @@ spec:
                 name: pipeline-config
             - secretRef:
                 name: minio-credentials
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: serving-api
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: serving-api
+  minReplicas: {{ .Values.servingApi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.servingApi.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.servingApi.autoscaling.targetCPUUtilization }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: 300
