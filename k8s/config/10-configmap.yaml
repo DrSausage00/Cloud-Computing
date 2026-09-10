@@ -21,3 +21,4 @@ data:
   S3_CACHE_TTL_SECONDS: "30"
   API_TIMEOUT_SECONDS: "10"
   CACHE_TTL_SECONDS: "3"
+  SILVER_TABLE_PATH: "silver/machine-metrics"

@@ -107,3 +107,4 @@ pipeline:
   s3CacheTtlSeconds: "30"
   apiTimeoutSeconds: "10"
   cacheTtlSeconds: "3"
+  silverTablePath: "silver/machine-metrics"
