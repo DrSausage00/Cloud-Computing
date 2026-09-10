@@ -69,7 +69,7 @@ metadata:
   name: ui
   namespace: {{ .Release.Namespace }}
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: certificate-cluster-issuer
 spec:
   ingressClassName: traefik
   tls:

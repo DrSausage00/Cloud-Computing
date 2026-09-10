@@ -17,6 +17,16 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      initContainers:
+        - name: wait-for-kafka
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w 2 kafka 9092; do
+                echo "Warte auf Kafka..."; sleep 2
+              done
       containers:
         - name: ingestion
           image: {{ include "mes.image" (dict "ctx" . "image" .Values.ingestion.image "tag" .Values.ingestion.tag) | quote }}
