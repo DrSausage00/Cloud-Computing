@@ -1,31 +1,81 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark-executor-manager
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark-executor-manager
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: spark
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: spark-executor-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream-processing-driver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
+  ports:
+    - name: driver-rpc
+      port: 7078
+    - name: driver-blockmanager
+      port: 7079
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stream-processing
-  namespace: mes
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: stream-processing
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.streamProcessing.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
-      app: stream-processing
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 6 }}
   template:
     metadata:
       labels:
-        app: stream-processing
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       containers:
         - name: stream-processing
-          image: mes/stream-processing:0.1
-          imagePullPolicy: IfNotPresent
+          image: {{ include "mes.image" (dict "ctx" . "image" .Values.streamProcessing.image "tag" .Values.streamProcessing.tag) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           resources:
-            requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
-              cpu: 1500m
-              memory: 2Gi
+            {{- toYaml .Values.streamProcessing.resources | nindent 12 }}
           livenessProbe:
             exec:
               command: ["sh", "-c", "pgrep -f streaming_job.py > /dev/null"]
