@@ -13,6 +13,7 @@ venv/
 .env
 *.local.yaml
 k8s/config/11-secret.yaml
+values-secret.yaml
 
 # editor
 .DS_Store
