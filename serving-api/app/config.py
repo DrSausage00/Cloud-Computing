@@ -25,6 +25,15 @@ S3_READ_TIMEOUT = int(os.getenv("S3_READ_TIMEOUT", "10"))
 S3_RETRY_MAX_ATTEMPTS = int(os.getenv("S3_RETRY_MAX_ATTEMPTS", "1"))
 S3_USE_LISTINGS_CACHE = os.getenv("S3_USE_LISTINGS_CACHE", "false").lower() == "true"
 
+#TTL des load_table()‑Caches muss konfigurierbar sein, damit Readiness‑Probes
+# mit unterschiedlichen Intervallen nicht jedes Mal einen abgelaufenen Cache treffen.
+S3_CACHE_TTL_SECONDS = int(os.getenv("S3_CACHE_TTL_SECONDS", "5"))
+
+#Optionaler Redis‑Cache für alle Pods; ohne REDIS_HOST nutzt storage.py weiterhin
+# automatisch den bisherigen In‑Memory‑Cache pro Pod.
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+
 # Timeouts gegen MinIO:
 # Ohne diese Timeouts kann die API hängen bleiben, wenn MinIO nicht antwortet.
 # Das blockiert Uvicorn-Worker -> API reagiert nicht mehr (kritischer Bug).
