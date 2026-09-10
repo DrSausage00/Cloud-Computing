@@ -6,8 +6,8 @@ metadata:
   labels:
     app: minio
 spec:
-  serviceName: minio
-  replicas: 1
+  serviceName: minio-headless
+  replicas: 4
   selector:
     matchLabels:
       app: minio
@@ -46,7 +46,11 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-          args: ["server", "/data", "--console-address", ":9001"]
+          args: 
+            - server
+            - "http://minio-{0...3}.minio-headless.mes.svc.cluster.local/data"
+            - "--console-address"
+            - ":9001"
           envFrom:
             - secretRef:
                 name: minio-credentials
