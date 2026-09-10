@@ -21,3 +21,4 @@ data:
   S3_CACHE_TTL_SECONDS: {{ .Values.pipeline.s3CacheTtlSeconds | quote }}
   API_TIMEOUT_SECONDS: {{ .Values.pipeline.apiTimeoutSeconds | quote }}
   CACHE_TTL_SECONDS: {{ .Values.pipeline.cacheTtlSeconds | quote }}
+  SILVER_TABLE_PATH: {{ .Values.pipeline.silverTablePath | quote }}
