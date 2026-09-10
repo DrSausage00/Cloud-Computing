@@ -222,6 +222,28 @@ einer einzelnen Seite.
 
 ---
 
+## 8. Kubernetes-Deployment
+
+**Aus der Aufgabenstellung:** „Skalierbarkeit: die Anwendung muss darauf ausgelegt sein, in
+allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
+
+| Komponente | Zustand | Mechanismus | Skalierungseinheit | Nachweis |
+|---|---|---|---|---|
+| Ingestion | zustandslos | Deployment-Replicas | Simulator-Instanz | `kubectl scale`, Offsets gemessen |
+| Serving-API | zustandslos | **HPA** auf CPU | HTTP-Request | `kubectl get hpa -w` |
+| UI | zustandslos | Deployment-Replicas | HTTP-Request | `kubectl scale` |
+| Stream Processing | Checkpoint in MinIO | **Spark-Executor-Pods** | **Kafka-Partition** | Executor-Pods erscheinen |
+| Kafka | StatefulSet + PVC | mehr Broker + mehr Partitionen | Partition | begründet, nicht vorgeführt |
+| MinIO | StatefulSet + PVC | Distributed Mode, Erasure Coding | Knoten | begründet, nicht vorgeführt |
+
+**Eine bewusste Grenze:** Mehr Spark-Executors als Kafka-Partitionen bringen nichts. Drei
+Partitionen heißen: sinnvolle Parallelität endet bei drei Executors. Wer weiter skalieren will,
+erhöht zuerst die Partitionszahl — nicht die Executor-Zahl.
+
+Bei genügend Last werden MinIO oder Kafka zum Engpass, nicht die Serving-API.
+
+---
+
 ## 9. Deployment-Anleitung
 
 ### Voraussetzungen
