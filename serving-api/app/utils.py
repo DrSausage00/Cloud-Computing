@@ -29,7 +29,7 @@ def row_to_json(row: pd.Series) -> dict:
         "min_temperature": safe_float(row["min_temperature"]),
         "max_temperature": safe_float(row["max_temperature"]),
         "event_count": int(row["event_count"]),
-        "last_status": row["last_status"],
+        "last_status": row["last_status"] if pd.notna(row["last_status"]) else None,
         "temperature_limit": safe_float(row["temperature_limit"]),
         "limit_exceeded": bool(row["limit_exceeded"]),
     }
