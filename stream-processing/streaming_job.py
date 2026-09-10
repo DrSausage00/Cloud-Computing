@@ -128,7 +128,8 @@ silver_stream = (aggregated_stream
 )
 
 # Pfad für die aggregierten 10-Sekunden-Maschinenmetriken
-silver_path = f"s3a://{minio_data_bucket}/silver/machine-metrics"
+silver_table_path = os.getenv("SILVER_TABLE_PATH", "silver/machine-metrics")
+silver_path = f"s3a://{minio_data_bucket}/{silver_table_path}"
 checkpoint_path = f"{checkpoint_dir}/machine-metrics"
 
 # Pfad für den zuletzt bekannten Status jeder Maschine
