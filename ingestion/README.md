@@ -16,8 +16,9 @@ Simulator (A/B/C)  ->  Parser  ->  MachineEvent  ->  Kafka-Producer  ->  machine
 | Schema | [`schema/`](schema/) | Definition von `MachineEvent` |
 | Producer | [`producer/`](producer/) | Serialisierung, Partitionszuordnung, Versand |
 
-Der Takt liegt bei 2 Sekunden pro Durchlauf, pro Durchlauf entstehen 10 Events vom Typ A,
-5 vom Typ B und 3 vom Typ C.
+Der Takt liegt standardmäßig bei 2 Sekunden pro Durchlauf, pro Durchlauf entstehen 10 Events
+vom Typ A, 5 vom Typ B und 3 vom Typ C. Welche Typen ein Prozess simuliert, steuert
+`MACHINE_TYPES` (siehe [Konfiguration](#konfiguration)).
 
 ## Formate und Felder
 
@@ -66,9 +67,36 @@ würde das Producer-Batching von Kafka aushebeln.
 | Variable | Standard | Bedeutung |
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Adresse des Brokers |
+| `MACHINE_TYPES` | `A,B,C` | Kommaliste der Typen, die dieser Prozess simuliert |
+| `INGESTION_INTERVAL_SECONDS` | `2` | Takt eines Durchlaufs |
+| `MACHINE_A_COUNT` | `10` | Events vom Typ A pro Durchlauf |
+| `MACHINE_B_COUNT` | `5` | Events vom Typ B pro Durchlauf |
+| `MACHINE_C_COUNT` | `3` | Events vom Typ C pro Durchlauf |
+
+Ein unbekannter Typ oder eine leere Liste in `MACHINE_TYPES` beendet den Prozess beim Start
+mit einer Fehlermeldung, statt still nichts zu produzieren.
 
 [`.env.example`](.env.example) ist die Vorlage für die MinIO-Zugangsdaten, die
 `docker-compose.yml` benötigt — nicht für die Ingestion selbst.
+
+## Horizontale Skalierung
+
+`MACHINE_TYPES` erlaubt es, denselben Container-Build mehrfach zu deployen und die
+Maschinentypen auf mehrere Ingestion-Pods aufzuteilen:
+
+| Pod | `MACHINE_TYPES` | Produziert nach Partition |
+|---|---|---|
+| `ingestion-a` | `A` | 0 (`A-001`) |
+| `ingestion-b` | `B` | 1 (`B-001`) |
+| `ingestion-c` | `C` | 2 (`C-001`) |
+
+Das passt zur festen Partitionszuordnung oben: Jeder Pod schreibt in genau eine Partition,
+die Reihenfolge je Maschine bleibt erhalten und das Topic wird tatsächlich parallel
+beschrieben.
+
+Wichtig: Ein Deployment einfach auf `replicas: 3` zu setzen skaliert **nicht** — jede Replica
+würde denselben Typ mit demselben `machine_id` simulieren und Duplikate erzeugen. Die
+Aufteilung muss über `MACHINE_TYPES` erfolgen, also über je ein Deployment pro Typ.
 
 ## Lokal starten
 
