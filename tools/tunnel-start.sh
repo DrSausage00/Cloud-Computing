@@ -6,7 +6,7 @@ URLFILE="$REPO/docs/current-tunnel-url.txt"
 pkill -f "cloudflared tunnel" 2>/dev/null
 sleep 1
 
-nohup cloudflared tunnel --url http://localhost:443 --no-tls-verify > "$LOGFILE" 2>&1 &
+nohup cloudflared tunnel --url "http://[fd00:43::4da9]:8050" > "$LOGFILE" 2>&1 &
 
 echo "Warte auf Tunnel-URL..."
 URL=""
