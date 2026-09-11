@@ -20,7 +20,7 @@ Hinweis zur KI-Nutzung: In diesem Projekt wurde KI-Unterstützung genutzt (u. a.
 |---|------------|----------------|--------|
 | 1 | Ingestion & Datengeneratoren | **Leo** | [`components/ingestion/`](components/ingestion/) |
 | 2 | Kafka & Storage-Layer (MinIO) | **Kirill** | [`components/kafka-storage/`](components/kafka-storage/) |
-| 3 | Stream Processing (Spark/Flink) | **_Name folgt_** | [`components/stream-processing/`](components/stream-processing/) |
+| 3 | Stream Processing (Spark/Flink) | **Cäcilia** | [`components/stream-processing/`](components/stream-processing/) |
 | 4 | Serving-API (FastAPI) | **Aaron** | [`components/serving-api/`](components/serving-api/) |
 | 5 | User-facing UI | **Max** | [`components/ui/`](components/ui/) |
 | 6 | Kubernetes-Deployment & Doku (Integrator) | **Lars** | [`k8s/`](k8s/), [`docs/`](docs/) |
