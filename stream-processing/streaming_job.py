@@ -33,7 +33,6 @@ checkpoint_dir = os.getenv("SPARK_CHECKPOINT_DIR", "/checkpoints")
 # erstellt eine SparkSession
 spark = (SparkSession.builder
          .appName("MESStreamProcessing")
-         .master("local[2]") # setzt die Anzahl der Threads auf 2
          .config("spark.sql.shuffle.partitions", "4") # setzt die Anzahl der Partitionen für Shuffle-Operationen auf 4
          .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
          .config("spark.hadoop.fs.s3a.access.key", minio_access_key)
