@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: silver-compaction
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: compact
+              image: {{ include "mes.image" (dict "ctx" . "image" .Values.streamProcessing.image "tag" .Values.streamProcessing.tag) | quote }}
+              command:
+                - /opt/spark/bin/spark-submit
+                - --packages
+                - org.apache.hadoop:hadoop-aws:3.5.0
+                - /app/compact.py
+              envFrom:
+                - configMapRef:
+                    name: pipeline-config
+                - secretRef:
+                    name: minio-credentials
+              env:
+                - name: JAVA_TOOL_OPTIONS
+                  value: "-Duser.home=/tmp"
