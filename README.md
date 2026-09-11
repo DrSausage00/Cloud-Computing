@@ -1,3 +1,42 @@
+# MES Streaming Pipeline auf Kubernetes
+
+> Prüfungsleistung **Cloud Computing und Big Data 2026** (DHBW, Prof. Dr.-Ing. habil. Dennis Pfisterer).
+> Datengetriebener Big-Data-Prototyp: ein vereinfachtes **Manufacturing Execution System (MES)**-Monitoring,
+> streaming-first (Kappa) und deklarativ auf Kubernetes betrieben.
+
+Dieses Dokument ist das **alleinige Berichtsdokument** für die Abgabe. Es ist bewusst als
+Skelett mit den 12 Pflichtabschnitten angelegt und wird von den jeweils zuständigen
+Teammitgliedern befüllt (siehe [Aufgabenverteilung](#aufgabenverteilung)).
+
+---
+
+Hinweis zur KI-Nutzung: In diesem Projekt wurde KI-Unterstützung genutzt (u. a. Claude Code und ChatGPT), unter anderem zur Fehlerdiagnose, bei der Dokumentation und punktuell in der Umsetzung einzelner Komponenten. Architekturentscheidungen, Code-Verständnis und die Verantwortung für das Ergebnis liegen bei uns als Team — die KI wurde als Werkzeug eingesetzt, nicht als Ersatz für eigenes Verständnis.
+
+---
+
+## Aufgabenverteilung
+
+| # | Komponente | Verantwortlich | Ordner |
+|---|------------|----------------|--------|
+| 1 | Ingestion & Datengeneratoren | **Leo** | [`components/ingestion/`](components/ingestion/) |
+| 2 | Kafka & Storage-Layer (MinIO) | **Kirill** | [`components/kafka-storage/`](components/kafka-storage/) |
+| 3 | Stream Processing (Spark/Flink) | **_Name folgt_** | [`components/stream-processing/`](components/stream-processing/) |
+| 4 | Serving-API (FastAPI) | **Aaron** | [`components/serving-api/`](components/serving-api/) |
+| 5 | User-facing UI | **Max** | [`components/ui/`](components/ui/) |
+| 6 | Kubernetes-Deployment & Doku (Integrator) | **Lars** | [`k8s/`](k8s/), [`docs/`](docs/) |
+
+Details zum Arbeitsablauf: siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+Schnittstellen zwischen den Komponenten: siehe [docs/interface-contracts.md](docs/interface-contracts.md).
+
+---
+
+## Berichtsabschnitte (Bewertungskriterien)
+
+Die folgenden 12 Abschnitte entsprechen exakt den Pflichtabschnitten der Aufgabenstellung.
+Fehlende Pflichtabschnitte werden im jeweiligen Kriterium mit 0 Punkten gewertet.
+
+---
+
 ## Inhaltsverzeichnis
 
 - [1. Use Case und Motivation](#1-use-case-und-motivation)
