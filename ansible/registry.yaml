@@ -29,13 +29,26 @@ spec:
           image: registry:2
           ports:
             - containerPort: 5000
+          env:
+            - name: REGISTRY_AUTH
+              value: htpasswd
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Registry Realm"
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: /auth/htpasswd
           volumeMounts:
             - name: data
               mountPath: /var/lib/registry
+            - name: auth
+              mountPath: /auth
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: registry-data
+        - name: auth
+          secret:
+            secretName: registry-htpasswd
 ---
 apiVersion: v1
 kind: Service
