@@ -1,7 +1,7 @@
 #!/bin/bash
 LOGFILE=/tmp/cloudflared.log
-REPO=~/Cloud-Computing
-URLFILE="$REPO/docs/current-tunnel-url.txt"
+GIST_ID="79c6ec67c2fd4b6d71eb85fb5d5ca439"
+TOKEN_FILE=~/github-gist-token.txt
 
 pkill -f "cloudflared tunnel" 2>/dev/null
 sleep 1
@@ -25,19 +25,12 @@ fi
 
 echo "Tunnel-URL: $URL"
 
-mkdir -p "$REPO/docs"
-{
-  echo "# Aktuelle Cloudflare-Tunnel-URL"
-  echo ""
-  echo "Automatisch generiert von tools/tunnel-start.sh auf mes-master."
-  echo "Stand: $(date)"
-  echo ""
-  echo "$URL"
-} > "$URLFILE"
+TOKEN=$(cat "$TOKEN_FILE" | tr -d '[:space:]')
+CONTENT="Aktuelle Tunnel-URL (Stand: $(date)):\n\n${URL}"
 
-cd "$REPO"
-git add "$URLFILE"
-git commit -m "chore: Tunnel-URL aktualisiert ($(date +%Y-%m-%d_%H:%M))" --quiet
-git push --quiet
+curl -s -X PATCH "https://api.github.com/gists/$GIST_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"files\":{\"tunnel-url.txt\":{\"content\":\"$CONTENT\"}}}" > /dev/null
 
-echo "Fertig, URL in $URLFILE committed und gepusht."
+echo "Fertig, Gist aktualisiert: https://gist.github.com/larsburian-git/$GIST_ID"
