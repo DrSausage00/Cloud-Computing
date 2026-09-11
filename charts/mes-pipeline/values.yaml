@@ -108,3 +108,4 @@ pipeline:
   apiTimeoutSeconds: "10"
   cacheTtlSeconds: "3"
   silverTablePath: "silver/machine-metrics"
+  statusTablePath: "silver/machine-status"
