@@ -5,6 +5,7 @@ Health- und Readiness-Endpunkte für Kubernetes.
 from fastapi import APIRouter, HTTPException
 
 from ..storage import load_table
+from ..storage import load_status
 
 router = APIRouter(tags=["health"])
 
@@ -34,7 +35,7 @@ def ready():
     Load-Balancer aufzunehmen, wenn sie wirklich bereit sind.
     """
     try:
-        df = load_table()
+        df = load_status()
         return {"status": "ok", "rows": len(df)}
     except Exception as exc:
         raise HTTPException(

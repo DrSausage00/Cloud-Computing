@@ -14,7 +14,12 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_DATA_BUCKET = os.getenv("MINIO_DATA_BUCKET", "mes-data")
 
 # Genau der Pfad, unter dem der Spark-Job schreibt (silver_path in streaming_job.py)
-SILVER_PATH = f"s3://{MINIO_DATA_BUCKET}/silver/machine-metrics/"
+SILVER_TABLE_PATH = os.getenv("SILVER_TABLE_PATH", "silver/machine-metrics")
+SILVER_PATH = f"s3://{MINIO_DATA_BUCKET}/{SILVER_TABLE_PATH}/"
+ 
+STATUS_TABLE_PATH = os.getenv("STATUS_TABLE_PATH", "silver/machine-status")
+STATUS_PATH = f"s3://{MINIO_DATA_BUCKET}/{STATUS_TABLE_PATH}/"
+
 
 # Feinabstimmung der S3-Timeouts/Retries ueber Env-Variablen, damit sie sich
 # ueber die ConfigMap anpassen lassen, ohne Zugangsdaten/Endpoint anzufassen
