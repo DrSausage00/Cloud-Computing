@@ -1,0 +1,34 @@
+name: Build & Push ui
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.REGISTRY_HOST }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASS }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ui
+          push: true
+          tags: |
+            ${{ vars.REGISTRY_HOST }}/mes/ui:0.1
+            ${{ vars.REGISTRY_HOST }}/mes/ui:${{ steps.sha.outputs.short }}

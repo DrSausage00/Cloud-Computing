@@ -15,7 +15,7 @@ from pyspark.sql import SparkSession
 # to_date (String in Date konvertieren)
 from pyspark.sql.functions import col, lit, window, avg, count, min, max, max_by, from_json, to_timestamp, to_date
 # ermöglicht die Verwendung von den Funktionen
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, MapType
 # ermöglicht die Verwendung von Betriebssystemfunktionen
 import os
 
@@ -33,7 +33,6 @@ checkpoint_dir = os.getenv("SPARK_CHECKPOINT_DIR", "/checkpoints")
 # erstellt eine SparkSession
 spark = (SparkSession.builder
          .appName("MESStreamProcessing")
-         .master("local[2]") # setzt die Anzahl der Threads auf 2
          .config("spark.sql.shuffle.partitions", "4") # setzt die Anzahl der Partitionen für Shuffle-Operationen auf 4
          .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
          .config("spark.hadoop.fs.s3a.access.key", minio_access_key)
@@ -46,14 +45,11 @@ spark = (SparkSession.builder
 spark.sparkContext.setLogLevel("WARN")
 
 # definiert das Schema für die Messdaten, die von den Maschinen generiert werden
-measurement_schema = StructType([
-    StructField("temperature", DoubleType(), True),
-    StructField("pressure", DoubleType(), True),
-    StructField("vibration", DoubleType(), True),
-    StructField("rotation_speed", DoubleType(), True),
-    StructField("power_consumption", DoubleType(), True),
-    StructField("status", StringType(), True)
-])
+measurement_schema = MapType(
+    StringType(), # der Schlüssel ist ein String (z.B. "temperature", "pressure", "vibration", "status")
+    StringType(), # der Wert ist ein String (z.B. "75.0", "1.2", "0.5", "OK")
+    True
+)
 
 # definiert das Schema für die JSON-Daten, die von der Kafka-Quelle gelesen werden
 machine_schema = StructType([StructField("timestamp", StringType(), True),
@@ -74,14 +70,15 @@ stream = (spark.readStream
 
 # erstellt einen neuen Streaming-DataFrame, der die Spalten "machine_id" und "temperature" enthält
 machine_stream = (stream
-                  .select(from_json(col("value").cast("string"), machine_schema).alias("data"))
+                  .select(from_json(col("value").cast("string"), machine_schema, {"primitivesAsString": "true"}).alias("data"))
                   .select(col("data.timestamp").alias("timestamp"),
                           col("data.machine_id").alias("machine_id"),
                           col("data.machine_type").alias("machine_type"),
-                          col("data.measurements.temperature").alias("temperature"),
-                          col("data.measurements.pressure").alias("pressure"),
-                          col("data.measurements.vibration").alias("vibration"),
-                          col("data.measurements.status").alias("status"),
+                          col("data.measurements").alias("measurements"),
+                          col("data.measurements")["temperature"].cast("double").alias("temperature"),
+                          col("data.measurements")["pressure"].cast("double").alias("pressure"),
+                          col("data.measurements")["vibration"].cast("double").alias("vibration"),
+                          col("data.measurements")["status"].alias("status"),
                           col("data.schema_version").alias("schema_version"))
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
 )
@@ -186,5 +183,15 @@ status_query = (status_stream.writeStream
                 .start()
                 )
 
-# wartet auf die Beendigung eines der beiden Streaming-Jobs
-spark.streams.awaitAnyTermination()
+# wartet auf die Beendigung der Queries und behandelt Fehler, die während der Ausführung auftreten können
+while True:
+    try:
+        spark.streams.awaitAnyTermination(timeout=10_000)
+    except Exception as exc:
+        print(f"Eine Query ist gestorben: {exc}")
+    finally:
+        spark.streams.resetTerminated()
+
+    if not spark.streams.active:
+        print("Alle Queries sind beendet. Beende SparkSession.")
+        break

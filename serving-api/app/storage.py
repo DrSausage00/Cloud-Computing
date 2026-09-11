@@ -13,6 +13,7 @@ from .config import (
     REDIS_PORT,
     S3_CACHE_TTL_SECONDS,
     SILVER_PATH,
+    STATUS_PATH,
     STORAGE_OPTIONS,
 )
 
@@ -124,3 +125,6 @@ def load_table() -> pd.DataFrame:
     # syntaktisch korrekt aussah.
     _cache["ts"] = time.time()
     return df
+
+def load_status() -> pd.DataFrame: 
+    return pd.read_parquet(STATUS_PATH, storage_options=STORAGE_OPTIONS)

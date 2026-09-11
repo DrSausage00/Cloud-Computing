@@ -1,0 +1,6 @@
+# Aktuelle Cloudflare-Tunnel-URL
+
+Automatisch generiert von tools/tunnel-start.sh auf mes-master.
+Stand: Fri Sep 11 11:56:12 UTC 2026
+
+https://returned-suggests-warcraft-keyboards.trycloudflare.com
