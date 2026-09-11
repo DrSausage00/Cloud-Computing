@@ -23,7 +23,7 @@ def _get_initial_state():
     }
 
 
-def generate_machine_c(machine_id: str = "C-001") -> dict:
+def generate_machine_c(machine_id: str = "C-001") -> str:
     if machine_id not in machine_states:
         machine_states[machine_id] = _get_initial_state()
 
@@ -43,12 +43,10 @@ def generate_machine_c(machine_id: str = "C-001") -> dict:
     state["last_update"] = now
 
     if state["status"] == "RUNNING":
-        # Temperatur nähert sich langsam dem Betriebswert
         state["temperature"] += (
             TARGET_TEMPERATURE - state["temperature"]
         ) * 0.01 * elapsed
 
-        # kleines Messrauschen
         state["temperature"] += random.uniform(-0.05, 0.05)
 
         if phase_duration >= RUN_DURATION_SECONDS:
@@ -56,7 +54,6 @@ def generate_machine_c(machine_id: str = "C-001") -> dict:
             state["phase_started_at"] = now
 
     elif state["status"] == "PAUSED":
-        # Während der Pause kühlt die Maschine ab
         state["temperature"] += (
             AMBIENT_TEMPERATURE - state["temperature"]
         ) * 0.02 * elapsed
@@ -67,9 +64,9 @@ def generate_machine_c(machine_id: str = "C-001") -> dict:
             state["status"] = "RUNNING"
             state["phase_started_at"] = now
 
-    return {
-        "timestamp": now.isoformat(),
-        "machine_id": machine_id,
-        "status": state["status"],
-        "temperature": round(state["temperature"], 2)
-    }
+    return (
+        f"{now.isoformat()}|"
+        f"{machine_id}|"
+        f"{round(state['temperature'], 2)}|"
+        f"{state['status']}"
+    )
