@@ -60,4 +60,4 @@ jobs:
                 token: ${{ secrets.K8S_SA_TOKEN }}
           EOF
           export KUBECONFIG=kubeconfig.yaml
-          kubectl rollout restart deployment/ingestion -n mes
+          kubectl rollout restart deployment/ingestion-a deployment/ingestion-b deployment/ingestion-c -n mes
