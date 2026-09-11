@@ -1,21 +1,27 @@
+{{- range .Values.ingestion.instances }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ingestion
-  namespace: {{ .Release.Namespace }}
+  name: ingestion-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 4 }}
+    app: ingestion-{{ .name }}
+    mes.family: ingestion
+    app.kubernetes.io/instance: {{ $.Release.Name }}
 spec:
-  replicas: {{ .Values.ingestion.replicaCount }}
+  replicas: 1
   selector:
     matchLabels:
-      {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 6 }}
+      app: ingestion-{{ .name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
   template:
     metadata:
       labels:
-        {{- include "mes.selectorLabels" (dict "ctx" . "component" "ingestion") | nindent 8 }}
+        app: ingestion-{{ .name }}
+        mes.family: ingestion
+        app.kubernetes.io/instance: {{ $.Release.Name }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
     spec:
       initContainers:
         - name: wait-for-kafka
@@ -29,12 +35,12 @@ spec:
               done
       containers:
         - name: ingestion
-          image: {{ include "mes.image" (dict "ctx" . "image" .Values.ingestion.image "tag" .Values.ingestion.tag) | quote }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          image: {{ include "mes.image" (dict "ctx" $ "image" $.Values.ingestion.image "tag" $.Values.ingestion.tag) | quote }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           ports:
             - containerPort: 80
           resources:
-            {{- toYaml .Values.ingestion.resources | nindent 12 }}
+            {{- toYaml $.Values.ingestion.resources | nindent 12 }}
           livenessProbe:
             exec:
               command: ["sh", "-c", "pgrep -f main.py > /dev/null"]
@@ -43,3 +49,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: pipeline-config
+          env:
+            - name: MACHINE_TYPES
+              value: {{ .machineTypes | quote }}
+---
+{{- end }}
