@@ -187,15 +187,3 @@ status_query = (status_stream.writeStream
 
 # wartet auf die Beendigung eines der beiden Streaming-Jobs
 spark.streams.awaitAnyTermination()
-
-while True:
-    try:
-        spark.streams.awaitAnyTermination(timeout=10_000)
-    except Exception as exc:
-        print(f"Eine Query ist gestorben: {exc}")
-    finally:
-        spark.streams.resetTerminated()
-
-    if not spark.streams.active:
-        print("Alle Queries sind beendet. Beende SparkSession.")
-        break
