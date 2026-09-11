@@ -45,11 +45,11 @@ spark = (SparkSession.builder
 spark.sparkContext.setLogLevel("WARN")
 
 # definiert das Schema für die Messdaten, die von den Maschinen generiert werden
-measurement_schema = MapType([
+measurement_schema = MapType(
     StringType(), # der Schlüssel ist ein String (z.B. "temperature", "pressure", "vibration", "status")
     StringType(), # der Wert ist ein String (z.B. "75.0", "1.2", "0.5", "OK")
     True
-])
+)
 
 # definiert das Schema für die JSON-Daten, die von der Kafka-Quelle gelesen werden
 machine_schema = StructType([StructField("timestamp", StringType(), True),
