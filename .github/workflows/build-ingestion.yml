@@ -32,3 +32,32 @@ jobs:
           tags: |
             ${{ vars.REGISTRY_HOST }}/mes/ingestion:0.1
             ${{ vars.REGISTRY_HOST }}/mes/ingestion:${{ steps.sha.outputs.short }}
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Rollout restart
+        run: |
+          cat <<EOF > kubeconfig.yaml
+          apiVersion: v1
+          kind: Config
+          clusters:
+            - name: mes
+              cluster:
+                server: https://${{ vars.K8S_API_HOST }}
+          contexts:
+            - name: mes
+              context:
+                cluster: mes
+                namespace: mes
+                user: github-actions
+          current-context: mes
+          users:
+            - name: github-actions
+              user:
+                token: ${{ secrets.K8S_SA_TOKEN }}
+          EOF
+          export KUBECONFIG=kubeconfig.yaml
+          kubectl rollout restart deployment/ingestion -n mes
