@@ -1,0 +1,110 @@
+global:
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
+
+# -----
+kafka:
+  image: confluentinc/cp-kafka:7.7.1
+  replicaCount: 3
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: 1000m
+      memory: 1200Mi
+
+minio:
+  image: docker.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+  replicaCount: 4
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  auth:
+    rootUser: ""
+    rootPassword: ""
+
+ingestion:
+  image: mes/ingestion
+  tag: "0.1"
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+streamProcessing:
+  image: mes/stream-processing
+  tag: "0.1"
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
+
+
+servingApi:
+  image: mes/serving-api
+  tag: "0.1"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilization: 50
+
+ui:
+  image: mes/ui
+  tag: "0.1"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  service:
+    type: NodePort
+    nodePort: 30080
+  ingress:
+    enabled: false
+    host: ""
+
+
+pipeline:
+  kafkaBootstrapServers: "kafka:9092"
+  tempLimit: "85"
+  minioEndpoint: "http://minio:9000"
+  minioDataBucket: "mes-data"
+  sparkCheckpointBucket: "spark-checkpoints"
+  sparkCheckpointDir: "s3a://spark-checkpoints/checkpoints"
+  useMock: "false"
+  apiBaseUrl: "http://serving-api:8000"
+  pollIntervalSeconds: "5"
+  historyMinutes: "15"
+  s3ConnectTimeout: "5"
+  s3ReadTimeout: "10"
+  s3RetryMaxAttempts: "1"
+  s3UseListingsCache: "false"
+  s3CacheTtlSeconds: "30"
+  apiTimeoutSeconds: "10"
+  cacheTtlSeconds: "3"
+  silverTablePath: "silver/machine-metrics"

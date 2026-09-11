@@ -1,0 +1,10 @@
+global:
+  imageRegistry: "registry.s241319-at-student-dhbw-mannheim-de.users.dhbw.site/"
+  imagePullPolicy: Always
+
+ui:
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: true
+    host: "mes-ui.s241319-at-student-dhbw-mannheim-de.users.dhbw.site"

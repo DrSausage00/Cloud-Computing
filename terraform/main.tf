@@ -47,7 +47,7 @@ resource "local_file" "ansible_inventory" {
                 (openstack_compute_instance_v2.master.network[0].fixed_ip_v6) = {
                   interpreter_python = "/usr/bin/python3"
                   ansible_user       = "ubuntu"
-                  ip_family          = "ipv6"
+                  ip_family          = "dual"
                   k3s_role           = "server"
                 }
               }
@@ -57,7 +57,7 @@ resource "local_file" "ansible_inventory" {
                 interpreter_python = "/usr/bin/python3"
                 k3s_server_host    = openstack_compute_instance_v2.master.network[0].fixed_ip_v6
                 k3s_role           = "agent"
-                ip_family          = "ipv6"
+                ip_family          = "dual"
               }
               hosts = {
                 for w in openstack_compute_instance_v2.worker :

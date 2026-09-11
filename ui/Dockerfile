@@ -11,4 +11,5 @@ EXPOSE 8050
 
 # Gunicorn statt Dash-Entwicklungsserver: mehrere Worker pro Pod,
 # stabil unter Last. "app:server" ist das Flask-Objekt aus app.py.
-CMD ["gunicorn", "--bind", "0.0.0.0:8050", "--workers", "2", "app:server"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:8050", "--workers", "2", "app:server"]
+CMD ["gunicorn", "--bind", "[::]:8050", "--workers", "2", "app:server"]

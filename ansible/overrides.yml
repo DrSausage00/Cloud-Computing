@@ -1,9 +1,16 @@
 all:
+  # Global variables — they apply to every host in the inventory, so a
+  # cluster can grow (server + agents) without repeating the zone or key.
   vars:
-    # local-path reicht bei 124 MB/Tag; kein Storage-Failover noetig.
     longhorn_enabled: false
-    # Kein naechtlicher Cluster-Neustart waehrend der Projektwoche.
+
     k3s_auto_upgrade_enabled: false
-    # Fester Name statt IPv6-Adresse im Dateinamen - sonst Doppelpunkt-
-    # Problem auf dem NTFS-Mount unter /mnt/c.
+    ip_family: dual
+
     kubeconfig_path: "{{ playbook_dir }}/kubeconfig-mes.yaml"
+
+    cert_manager_email: s241319@student.dhbw-mannheim.de
+
+    rfc2136_zone: s241319-at-student-dhbw-mannheim-de.users.dhbw.site
+    rfc2136_dns_host: ns.cloud-ns.dhbw-mannheim.de.
+    rfc2136_dns_port: 53

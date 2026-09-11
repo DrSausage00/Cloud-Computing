@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: serving-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mes.selectorLabels" (dict "ctx" . "component" "serving-api") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: serving-api
+          image: {{ include "mes.image" (dict "ctx" . "image" .Values.servingApi.image "tag" .Values.servingApi.tag) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8000
+          resources:
+            {{- toYaml .Values.servingApi.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 30
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: minio-credentials
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: serving-api
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: serving-api
+  minReplicas: {{ .Values.servingApi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.servingApi.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.servingApi.autoscaling.targetCPUUtilization }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: 300

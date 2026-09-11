@@ -132,13 +132,13 @@ Ingestion  ──▶  Kafka  ──▶  Stream Processing  ──▶  MinIO  ─
 
 | Komponente | Ordner | Verantwortlich | Aufgabe |
 |---|---|---|---|
-| Ingestion | [`ingestion/`](../ingestion/) | Leo, Kirill | Simulatoren, Normalisierung, Kafka-Producer |
-| Kafka | — | Kirill | Broker im KRaft-Modus, Topics, Retention |
-| Stream Processing | [`stream-processing/`](../stream-processing/) — [README](../stream-processing/README.md) | Cäcilia | Spark Structured Streaming |
-| MinIO | — | Kirill | S3-kompatibler Objektspeicher, Silver-Schicht |
-| Serving-API | [`serving-api/`](../serving-api/) — [README](../serving-api/Readme.md) | Aaron | Abfrage-Endpunkte über der Silver-Schicht |
-| UI | [`ui/`](../ui/) — [README](../ui/README.md) | Max | Dashboard |
-| Deployment | [`terraform/`](../terraform/) — [README](../terraform/README.md), [`k8s/`](../k8s/) | Lars | Cluster-Bereitstellung, Kubernetes-Manifeste |
+| Ingestion | [`ingestion/`](ingestion/) | Leo, Kirill | Simulatoren, Normalisierung, Kafka-Producer |
+| Kafka | — | Kirill | Broker im KRaft-Modus (3 Broker), Topics, Retention |
+| Stream Processing | [`stream-processing/`](stream-processing/) — [README](stream-processing/README.md) | Cäcilia | Spark Structured Streaming |
+| MinIO | — | Kirill | S3-kompatibler Objektspeicher (4-Node Distributed Mode), Silver-Schicht |
+| Serving-API | [`serving-api/`](serving-api/) — [README](serving-api/Readme.md) | Aaron | Abfrage-Endpunkte über der Silver-Schicht |
+| UI | [`ui/`](ui/) — [README](ui/README.md) | Max | Dashboard |
+| Deployment | [`charts/mes-pipeline/`](charts/mes-pipeline/) — [README](terraform/README.md) | Lars | Helm-Chart, Cluster-Bereitstellung (Terraform + k3s) |
 
 **Warum ein Broker dazwischen.** Ohne Kafka wären Ingestion und Verarbeitung fest gekoppelt: Ein
 kurzer Ausfall der Verarbeitung würde Ereignisse verlieren, und eine langsame Verarbeitung würde
@@ -155,7 +155,6 @@ lesen. Die Partitionszahl ist damit gleichzeitig die Obergrenze der Parallelitä
 ## 5. Processing-Logik
 
 Der Streaming-Job liest aus Kafka, aggregiert über Event-Time-Fenster und schreibt nach MinIO.
-Stand 07.09.2026 umfasst er:
 
 | Baustein | Umsetzung |
 |---|---|
@@ -164,7 +163,7 @@ Stand 07.09.2026 umfasst er:
 | Aggregate | Durchschnitts-, Minimal- und Maximaltemperatur, Event Count |
 | State | letzter bekannter Maschinenstatus |
 | Anreicherung | Grenzwert `TEMP_LIMIT` aus der ConfigMap, Flag `limit_exceeded` |
-| Ausgabe | Parquet in `mes-data/silver/machine-metrics` |
+| Ausgabe | Parquet in `mes-data/silver/machine-metrics`, partitioniert nach `machine_type`/`event_date` |
 | Wiederanlauf | Checkpoints in `spark-checkpoints`, je Query ein eigener Pfad |
 
 **Warum Event-Time und nicht Verarbeitungszeit.** Ein Ereignis, das wegen einer Netzstörung
@@ -233,14 +232,24 @@ allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
 | Serving-API | zustandslos | **HPA** auf CPU | HTTP-Request | `kubectl get hpa -w` |
 | UI | zustandslos | Deployment-Replicas | HTTP-Request | `kubectl scale` |
 | Stream Processing | Checkpoint in MinIO | **Spark-Executor-Pods** | **Kafka-Partition** | Executor-Pods erscheinen |
-| Kafka | StatefulSet + PVC | mehr Broker + mehr Partitionen | Partition | begründet, nicht vorgeführt |
-| MinIO | StatefulSet + PVC | Distributed Mode, Erasure Coding | Knoten | begründet, nicht vorgeführt |
+| Kafka | StatefulSet + PVC | **3 KRaft-Broker** | Partition | `kafka-topics --describe`: Partitionen mit unterschiedlichen Leadern (0, 1, 2) |
+| MinIO | StatefulSet + PVC | **4-Node Distributed Mode**, Erasure Coding | Knoten | `mc admin info`: vier Knoten online, EC:2 |
 
 **Eine bewusste Grenze:** Mehr Spark-Executors als Kafka-Partitionen bringen nichts. Drei
 Partitionen heißen: sinnvolle Parallelität endet bei drei Executors. Wer weiter skalieren will,
 erhöht zuerst die Partitionszahl — nicht die Executor-Zahl.
 
 Bei genügend Last werden MinIO oder Kafka zum Engpass, nicht die Serving-API.
+
+**Eine zweite, unabhängige Grenze — lokale Testumgebung, nicht die Cloud:** Kafka (3 Broker) und
+MinIO (4 Knoten) gleichzeitig auf einer einzigen minikube-VM sättigen deren Disk-I/O
+(beobachtet: ~32 % I/O-Wait, Load-Average 45-70 auf 16 Kernen) — der Node wechselt kurzzeitig
+zwischen `Ready`/`NotReady`, einzelne Pods (auch `metrics-server`) werden neu gestartet, weil
+ihre Probes wegen des I/O-Rückstaus timeouten. Kein Konfigurationsfehler und keine
+Instabilität der Anwendung selbst — sieben Storage-Pods, die sich eine gemeinsame virtuelle
+Platte teilen, sind ein reines Kapazitätsproblem der lokalen Entwicklungsumgebung. Auf der DHBW
+Cloud verteilt sich dieselbe I/O-Last über drei echte VMs mit jeweils eigener Platte, wo dieses
+Muster in der Form nicht zu erwarten ist.
 
 ---
 
@@ -251,9 +260,23 @@ Bei genügend Last werden MinIO oder Kafka zum Engpass, nicht die Serving-API.
 | Werkzeug | Zweck |
 |---|---|
 | Docker | Images bauen |
-| kubectl, Helm, Ansible | Deployment |
+| kubectl, Helm | Deployment |
 | minikube | lokale Entwicklungsumgebung |
-| Terraform, OpenStack-CLI | Cluster in der DHBW Cloud |
+| Terraform, Ansible, OpenStack-CLI | Cluster in der DHBW Cloud |
+
+### Ein Chart, zwei Umgebungen
+
+```bash
+# minikube
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait
+
+# DHBW Cloud
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml -f ./charts/mes-pipeline/values-dhbw.yaml --namespace mes --create-namespace --wait
+```
+
+`values-dhbw.yaml` überschreibt nur die paar Werte, die sich zwischen den Umgebungen
+unterscheiden — Image-Registry, `imagePullPolicy`, UI-Service-Typ und Ingress. Alles andere
+(Kafka mit 3 Brokern, MinIO mit 4 Knoten, die HPA auf der Serving-API) ist exakt dasselbe Chart.
 
 ### DHBW Cloud
 
@@ -262,7 +285,7 @@ Die Anmeldung von Werkzeugen erfolgt über ein **Application Credential**, nicht
 und Passwort — die Anmeldung an der Weboberfläche läuft über SSO, ein Passwort existiert dafür
 nicht. Die erzeugte `clouds.yaml` liegt außerhalb des Repositories.
 
-**2. Infrastruktur.** Details dazu in [`terraform/README.md`](../../../terraform/README.md).
+**2. Infrastruktur.** Details dazu in [`terraform/README.md`](terraform/README.md).
 
 ```bash
 cd terraform
@@ -308,11 +331,34 @@ automatisch an bei drei Knoten) ist aus — bei 124 MB Tagesvolumen unnötiger A
 **automatische nächtliche k3s-Updates** sind aus, damit kein Cluster-Neustart mitten in die
 Projektwoche fällt.
 
+**4. Anwendung deployen.** Siehe "Ein Chart, zwei Umgebungen" oben.
+
 ### Abbau
 
 ```bash
 cd terraform && terraform destroy
 ```
+
+Erst **nach** den Screenshots. Die VMs belegen bis dahin Kontingent, das sich der ganze Kurs teilt.
+
+---
+
+## 10. Wesentliche Codeabschnitte
+
+Verlinkte Dateien mit je einem Satz, warum die Stelle wesentlich ist — kein „hier wird X
+gemacht", sondern was daran eine Entscheidung oder ein Verständnis zeigt.
+
+| Datei | Warum wesentlich |
+|---|---|
+| `ingestion/schema/unified_schema.py` | die Normalisierung dreier Rohformate — der fachliche Kern |
+| `ingestion/producer/kafka_producer.py` | `machine_id`/`MACHINE_PARTITION` als Partition-Key, sichert Reihenfolge je Maschine |
+| `stream-processing/streaming_job.py` | Fenster, Watermark, Partitionierung (`machine_type`, `event_date`)|
+| `serving-api/app/storage.py` | TTL-Cache gegen wiederholte Full-Scans durch Readiness-Probes, `load_table()` |
+| `ui/data_source.py` | Anbindung an die Serving-API statt Mock, kurzer serverseitiger Cache gegen Mehrfachanfragen |
+| `charts/mes-pipeline/templates/kafka.yaml` | `podManagementPolicy: Parallel` + `publishNotReadyAddresses` — die beiden Bootstrapping-Deadlocks beim 3-Broker-Umbau |
+| `charts/mes-pipeline/templates/serving-api.yaml` | HPA ohne von Helm verwaltete `replicas` — kein Kampf zwischen `helm upgrade` und der Autoskalierung |
+
+---
 
 
 ## 12. Grenzen und Ausblick
@@ -328,7 +374,7 @@ für eine realistische Partitionsverteilung wären mehr nötig.
 
 ### Skalierbarkeit der Verarbeitung
 
-Der Streaming-Job läuft mit `.master("local[2]")` — fest verdrahtet auf zwei Threads in einem
+Der Streaming-Job läuft mit `.master("local[2]")` fest verdrahtet auf zwei Threads in einem
 einzigen Pod. Das erfüllt die Anforderung „Skalierbarkeit in allen Komponenten" an dieser Stelle
 **nicht**, und das ist eine Einschränkung, keine Designentscheidung: Zwei Replicas wären zwei
 unabhängige Spark-Anwendungen, die dasselbe Topic vom selben Offset lesen und dieselben
@@ -358,3 +404,5 @@ gefunden. Ein Observability-Stack wäre der nächste Schritt.
 3. Spark-on-Kubernetes für horizontal skalierende Verarbeitung
 4. Observability-Stack
 5. Automatisierte Tests der Normalisierung
+6. Geteilter Redis-Cache statt In-Memory-Cache pro Serving-API-Pod (siehe Guide 17) — geplant
+   zwischen Freitags-Meeting und Abgabe, noch offen zum Zeitpunkt dieser Vorschau
