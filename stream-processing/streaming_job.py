@@ -15,7 +15,7 @@ from pyspark.sql import SparkSession
 # to_date (String in Date konvertieren)
 from pyspark.sql.functions import col, lit, window, avg, count, min, max, max_by, from_json, to_timestamp, to_date
 # ermöglicht die Verwendung von den Funktionen
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, MapType
 # ermöglicht die Verwendung von Betriebssystemfunktionen
 import os
 
@@ -45,14 +45,11 @@ spark = (SparkSession.builder
 spark.sparkContext.setLogLevel("WARN")
 
 # definiert das Schema für die Messdaten, die von den Maschinen generiert werden
-measurement_schema = StructType([
-    StructField("temperature", DoubleType(), True),
-    StructField("pressure", DoubleType(), True),
-    StructField("vibration", DoubleType(), True),
-    StructField("rotation_speed", DoubleType(), True),
-    StructField("power_consumption", DoubleType(), True),
-    StructField("status", StringType(), True)
-])
+measurement_schema = MapType(
+    StringType(), # der Schlüssel ist ein String (z.B. "temperature", "pressure", "vibration", "status")
+    StringType(), # der Wert ist ein String (z.B. "75.0", "1.2", "0.5", "OK")
+    True
+)
 
 # definiert das Schema für die JSON-Daten, die von der Kafka-Quelle gelesen werden
 machine_schema = StructType([StructField("timestamp", StringType(), True),
@@ -73,14 +70,15 @@ stream = (spark.readStream
 
 # erstellt einen neuen Streaming-DataFrame, der die Spalten "machine_id" und "temperature" enthält
 machine_stream = (stream
-                  .select(from_json(col("value").cast("string"), machine_schema).alias("data"))
+                  .select(from_json(col("value").cast("string"), machine_schema, {"primitivesAsString": "true"}).alias("data"))
                   .select(col("data.timestamp").alias("timestamp"),
                           col("data.machine_id").alias("machine_id"),
                           col("data.machine_type").alias("machine_type"),
-                          col("data.measurements.temperature").alias("temperature"),
-                          col("data.measurements.pressure").alias("pressure"),
-                          col("data.measurements.vibration").alias("vibration"),
-                          col("data.measurements.status").alias("status"),
+                          col("data.measurements").alias("measurements"),
+                          col("data.measurements")["temperature"].cast("double").alias("temperature"),
+                          col("data.measurements")["pressure"].cast("double").alias("pressure"),
+                          col("data.measurements")["vibration"].cast("double").alias("vibration"),
+                          col("data.measurements")["status"].alias("status"),
                           col("data.schema_version").alias("schema_version"))
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
 )
