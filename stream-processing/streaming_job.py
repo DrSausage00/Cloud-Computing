@@ -18,6 +18,7 @@ from pyspark.sql.functions import col, lit, window, avg, count, min, max, max_by
 from pyspark.sql.types import StructType, StructField, StringType, MapType
 # ermöglicht die Verwendung von Betriebssystemfunktionen
 import os
+import sys
 
 temperature_limit = float(os.getenv("TEMP_LIMIT", "95.0"))
 
@@ -197,14 +198,10 @@ status_query = (status_stream.writeStream
                 )
 
 # wartet auf die Beendigung der Queries und behandelt Fehler, die während der Ausführung auftreten können
-while True:
-    try:
-        spark.streams.awaitAnyTermination(timeout=10_000)
-    except Exception as exc:
-        print(f"Eine Query ist gestorben: {exc}")
-    finally:
-        spark.streams.resetTerminated()
+try:
+    spark.streams.awaitAnyTermination()
+except Exception as exc:
+    print(f"Eine Query ist gestorben, Pod wird zum Neustart beendet: {exc}")
+    sys.exit(1)
 
-    if not spark.streams.active:
-        print("Alle Queries sind beendet. Beende SparkSession.")
-        break
+print("Alle Queries sind beendet. Beende SparkSession.")

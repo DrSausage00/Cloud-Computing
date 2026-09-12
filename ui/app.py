@@ -42,8 +42,8 @@ def traffic_light(row: dict) -> tuple[str, str]:
     gelb  = laeuft, aber ueber dem Temperaturgrenzwert
     gruen = laeuft im Sollbereich
     """
-    if row["last_status"] in ("ERROR", "STOPPED"):
-        return "alarm", f"Status {row['last_status']}"
+    if row["last_status"] in ("OFF", "PAUSED"):
+        return "warn", f"Steht ({row['last_status']})"
     if row["limit_exceeded"]:
         return "warn", "Grenzwert überschritten"
     return "ok", "Läuft im Sollbereich"
