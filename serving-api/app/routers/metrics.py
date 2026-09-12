@@ -11,6 +11,8 @@ from fastapi import APIRouter, HTTPException
 from ..storage import load_table
 from ..utils import row_to_json
 
+import pandas as pd
+
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
