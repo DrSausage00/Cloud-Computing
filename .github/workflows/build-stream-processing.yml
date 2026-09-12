@@ -25,23 +25,16 @@ jobs:
           password: ${{ secrets.REGISTRY_PASS }}
 
       - name: Build & push
-        run: |
-          docker build -t ${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1 \
-                       -t ${{ vars.REGISTRY_HOST }}/mes/stream-processing:${{ steps.sha.outputs.short }} \
-                       stream-processing
-          docker push ${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1
-          docker push ${{ vars.REGISTRY_HOST }}/mes/stream-processing:${{ steps.sha.outputs.short }}
-
+        uses: docker/build-push-action@v6
+        with:
           context: stream-processing
           push: true
+          cache-from: type=registry,ref=${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1
+          cache-to: type=inline
           tags: |
             ${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1
             ${{ vars.REGISTRY_HOST }}/mes/stream-processing:${{ steps.sha.outputs.short }}
-      
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: "v1.31.0"
+
 
       - name: Rollout restart
         run: |
