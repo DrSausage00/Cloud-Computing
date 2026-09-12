@@ -70,6 +70,7 @@ streamProcessing:
       memory: 2Gi
 
 
+
 servingApi:
   image: mes/serving-api
   tag: "0.1"
@@ -116,7 +117,7 @@ pipeline:
   pollIntervalSeconds: "5"
   historyMinutes: "15"
   s3ConnectTimeout: "5"
-  s3ReadTimeout: "10"
+  s3ReadTimeout: "25"
   s3RetryMaxAttempts: "1"
   s3UseListingsCache: "false"
   s3CacheTtlSeconds: "30"
