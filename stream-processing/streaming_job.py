@@ -29,6 +29,13 @@ minio_access_key = os.getenv("MINIO_ACCESS_KEY")
 minio_secret_key = os.getenv("MINIO_SECRET_KEY")
 minio_data_bucket = os.getenv("MINIO_DATA_BUCKET", "mes-data")  
 checkpoint_dir = os.getenv("SPARK_CHECKPOINT_DIR", "/checkpoints")
+machine_types = [
+    t.strip().upper()
+    for t in os.getenv("MACHINE_TYPES", "A,B,C").split(",")
+    if t.strip()
+]
+machine_types_suffix = "-".join(machine_types).lower()
+silver_trigger_seconds = int(os.getenv("SILVER_TRIGGER_INTERVAL_SECONDS", "10"))
 
 # erstellt eine SparkSession
 spark = (SparkSession.builder
@@ -39,6 +46,9 @@ spark = (SparkSession.builder
          .config("spark.hadoop.fs.s3a.secret.key", minio_secret_key)
          .config("spark.hadoop.fs.s3a.path.style.access", "true")
          .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+         .config("spark.sql.shuffle.partitions", "4")
+         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
          .getOrCreate()
 )
 
@@ -83,6 +93,8 @@ machine_stream = (stream
                   .withColumn("timestamp", to_timestamp(col("timestamp")))
 )
 
+machine_stream = machine_stream.filter(col("machine_type").isin(machine_types))
+
 # erstellt einen neuen Streaming-DataFrame für die Bronze-Daten
 bronze_stream = (machine_stream
                     .withColumn("event_date", to_date(col("timestamp"))))
@@ -97,7 +109,7 @@ status_stream = (machine_stream
 
 # aggregiert die Daten im Streaming-DataFrame nach einem Zeitfenster von 10 Sekunden und der Maschinen-ID
 aggregated_stream = (machine_stream
-                     .withWatermark("timestamp", "20 seconds")
+                     .withWatermark("timestamp", "60 seconds")
                      .groupBy(
                          window(col("timestamp"), "10 seconds"), 
                          col("machine_id"),
@@ -127,20 +139,21 @@ silver_stream = (aggregated_stream
 # Pfad für die aggregierten 10-Sekunden-Maschinenmetriken
 silver_table_path = os.getenv("SILVER_TABLE_PATH", "silver/machine-metrics")
 silver_path = f"s3a://{minio_data_bucket}/{silver_table_path}"
-checkpoint_path = f"{checkpoint_dir}/machine-metrics"
+checkpoint_path = f"{checkpoint_dir}/machine-metrics-{machine_types_suffix}"
 
 # Pfad für den zuletzt bekannten Status jeder Maschine
 status_path = f"s3a://{minio_data_bucket}/silver/machine-status"
-status_checkpoint_path = f"{checkpoint_dir}/machine-status"
+status_checkpoint_path = f"{checkpoint_dir}/machine-status-{machine_types_suffix}"
 
 # Pfad für die Rohdaten der Maschinenmetriken
 bronze_path = f"s3a://{minio_data_bucket}/bronze/machine-events"
-bronze_checkpoint_path = f"{checkpoint_dir}/machine-events"
+bronze_checkpoint_path = f"{checkpoint_dir}/machine-events-{machine_types_suffix}"
 
 # schreibt den aktuellen Status aller Maschinen nach MinIO
 def write_status_to_minio(batch_df, batch_id):
     (batch_df.write
      .mode("overwrite")
+     .partitionBy("machine_type")
      .parquet(status_path)
     )
 
@@ -170,7 +183,7 @@ def write_silver_to_minio(batch_df, batch_id):
 silver_query = (silver_stream.writeStream
                 .foreachBatch(write_silver_to_minio)
                 .outputMode("append")
-                .trigger(processingTime="10 seconds")
+                .trigger(processingTime=f"{silver_trigger_seconds} seconds")
                 .option("checkpointLocation", checkpoint_path)
                 .start()
                 )
