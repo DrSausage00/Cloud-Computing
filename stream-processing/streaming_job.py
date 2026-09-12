@@ -109,7 +109,7 @@ status_stream = (machine_stream
 
 # aggregiert die Daten im Streaming-DataFrame nach einem Zeitfenster von 10 Sekunden und der Maschinen-ID
 aggregated_stream = (machine_stream
-                     .withWatermark("timestamp", "60 seconds")
+                     .withWatermark("timestamp", "30 seconds")
                      .groupBy(
                          window(col("timestamp"), "10 seconds"), 
                          col("machine_id"),
