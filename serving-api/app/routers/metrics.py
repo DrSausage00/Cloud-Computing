@@ -49,21 +49,51 @@ def metrics_latest():
     return [row_to_json(row) for _, row in latest_rows.iterrows()]
 
 
+def _downsample(df: pd.DataFrame, minutes: int) -> pd.DataFrame:
+    """
+    Verdichtet lange Zeitraeume auf groebere Zeitfenster.
+
+    Grund: Bei 10-Sekunden-Fenstern kommen bei einem Monat Zeitraum
+    ca. 260.000 Zeilen pro Maschine zusammen - das ueberlastet JSON-Transfer,
+    Plotly und den pandas-DataFrame beim Client. Ab einer gewissen Groesse
+    werden die Rohdaten daher zu groesseren Zeitfenstern gemittelt, bevor
+    sie rausgehen.
+    """
+    if minutes <= 120 or df.empty:
+        return df
+
+    if minutes <= 2880:
+        bucket = "5min"
+    elif minutes <= 10080:
+        bucket = "15min"
+    else:
+        bucket = "1h"
+
+    indexed = df.set_index("window_start")
+    weights = indexed["event_count"]
+
+    resampled = pd.DataFrame({
+        "avg_temperature": (indexed["avg_temperature"] * weights).resample(bucket).sum() / weights.resample(bucket).sum(),
+        "min_temperature": indexed["min_temperature"].resample(bucket).min(),
+        "max_temperature": indexed["max_temperature"].resample(bucket).max(),
+        "event_count": weights.resample(bucket).sum(),
+        "limit_exceeded": indexed["limit_exceeded"].resample(bucket).max(),
+        "last_status": indexed["last_status"].resample(bucket).last(),
+    }).dropna(subset=["avg_temperature"])
+
+    resampled["window_start"] = resampled.index
+    resampled["window_end"] = resampled.index + pd.Timedelta(bucket)
+    resampled["machine_id"] = df["machine_id"].iloc[0]
+    resampled["machine_type"] = df["machine_type"].iloc[0]
+    resampled["temperature_limit"] = df["temperature_limit"].iloc[0]
+
+    return resampled.reset_index(drop=True)
+
+
 @router.get("/history")
 def metrics_history(machine_id: str, minutes: int = 15):
     """
-    Liefert die Zeitreihe einer Maschine für die letzten `minutes` Minuten.
-
-    Einsatz:
-    --------
-    Die UI zeigt einen Chart, der die Temperaturentwicklung einer Maschine
-    über die letzten Minuten darstellt.
-
-    Partition Pruning:
-    -------------------
-    `minutes` bestimmt den Cutoff-Zeitpunkt; daraus leiten wir das
-    fruehestmoegliche `event_date` ab und lesen nur Partitionen ab diesem
-    Tag (statt der gesamten Historie).
+    ... (unveraendert bis auf die letzten zwei Zeilen)
     """
     cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
     cutoff_date = cutoff.date()
@@ -79,5 +109,7 @@ def metrics_history(machine_id: str, minutes: int = 15):
     filtered = df[
         (df["machine_id"] == machine_id) & (df["window_start"] >= cutoff)
     ].sort_values("window_start")
+
+    filtered = _downsample(filtered, minutes)
 
     return [row_to_json(row) for _, row in filtered.iterrows()]
