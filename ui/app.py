@@ -19,7 +19,7 @@ import data_source
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 HISTORY_MINUTES = int(os.getenv("HISTORY_MINUTES", "15"))
 
-app = Dash(__name__, title="MES Monitoring", suppress_callback_exceptions=True)
+app = Dash(__name__, title="MES Monitoring", suppress_callback_exceptions=True, update_title=None)
 
 # Gunicorn startet dieses Objekt (siehe Dockerfile)
 server = app.server
