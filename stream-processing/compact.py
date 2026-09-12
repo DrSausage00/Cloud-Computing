@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 import os
+import time
 from datetime import date
 
 minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
@@ -24,30 +25,45 @@ spark = (SparkSession.builder
 
 spark.sparkContext.setLogLevel("WARN")
 
-if len(partition_cols) == 1:
-    leaf_path = f"{full_path}/{partition_cols[0]}={event_date}"
-    df = spark.read.parquet(leaf_path).cache()
-    count_before = df.count()
-    print(f"Zeilen vor Kompaktierung fuer {table_path} / {event_date}: {count_before}")
 
-    if count_before > 0:
-        df.coalesce(1).write.mode("overwrite").parquet(leaf_path)
-        print(f"Kompaktierung fertig fuer {table_path} / {event_date}")
-    else:
-        print(f"Keine Daten fuer {table_path} / {event_date}, ueberspringe.")
-    df.unpersist()
-else:
-    df = spark.read.parquet(full_path).filter(f"event_date = '{event_date}'").cache()
-    count_before = df.count()
-    print(f"Zeilen vor Kompaktierung fuer {table_path} / {event_date}: {count_before}")
+def run_compaction():
+    if len(partition_cols) == 1:
+        leaf_path = f"{full_path}/{partition_cols[0]}={event_date}"
+        df = spark.read.parquet(leaf_path).cache()
+        count_before = df.count()
+        print(f"Zeilen vor Kompaktierung fuer {table_path} / {event_date}: {count_before}")
 
-    if count_before > 0:
-        (df.coalesce(1)
-           .write
-           .mode("overwrite")
-           .partitionBy(*partition_cols)
-           .parquet(full_path))
-        print(f"Kompaktierung fertig fuer {table_path} / {event_date}")
+        if count_before > 0:
+            df.coalesce(1).write.mode("overwrite").parquet(leaf_path)
+            print(f"Kompaktierung fertig fuer {table_path} / {event_date}")
+        else:
+            print(f"Keine Daten fuer {table_path} / {event_date}, ueberspringe.")
+        df.unpersist()
     else:
-        print(f"Keine Daten fuer {table_path} / {event_date}, ueberspringe.")
-    df.unpersist()
+        df = spark.read.parquet(full_path).filter(f"event_date = '{event_date}'").cache()
+        count_before = df.count()
+        print(f"Zeilen vor Kompaktierung fuer {table_path} / {event_date}: {count_before}")
+
+        if count_before > 0:
+            (df.coalesce(1)
+               .write
+               .mode("overwrite")
+               .partitionBy(*partition_cols)
+               .parquet(full_path))
+            print(f"Kompaktierung fertig fuer {table_path} / {event_date}")
+        else:
+            print(f"Keine Daten fuer {table_path} / {event_date}, ueberspringe.")
+        df.unpersist()
+
+
+max_attempts = 3
+for attempt in range(1, max_attempts + 1):
+    try:
+        run_compaction()
+        break
+    except Exception as exc:
+        if attempt == max_attempts:
+            raise
+        print(f"Kompaktierung fehlgeschlagen (Versuch {attempt}/{max_attempts}): {exc}")
+        print(f"Warte 10s und versuche es erneut...")
+        time.sleep(10)
