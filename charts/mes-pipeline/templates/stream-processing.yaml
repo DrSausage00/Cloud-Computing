@@ -37,45 +37,51 @@ metadata:
   name: stream-processing-driver
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
+    mes.family: stream-processing
 spec:
   clusterIP: None
   selector:
-    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
+    mes.family: stream-processing
   ports:
     - name: driver-rpc
       port: 7078
     - name: driver-blockmanager
       port: 7079
 ---
+{{- range .Values.streamProcessing.instances }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stream-processing
-  namespace: {{ .Release.Namespace }}
+  name: stream-processing-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 4 }}
+    app: stream-processing-{{ .name }}
+    mes.family: stream-processing
+    app.kubernetes.io/instance: {{ $.Release.Name }}
 spec:
-  replicas: {{ .Values.streamProcessing.replicaCount }}
+  replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 6 }}
+      app: stream-processing-{{ .name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
   template:
     metadata:
       labels:
-        {{- include "mes.selectorLabels" (dict "ctx" . "component" "stream-processing") | nindent 8 }}
+        app: stream-processing-{{ .name }}
+        mes.family: stream-processing
+        app.kubernetes.io/instance: {{ $.Release.Name }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
     spec:
       containers:
         - name: stream-processing
-          image: {{ include "mes.image" (dict "ctx" . "image" .Values.streamProcessing.image "tag" .Values.streamProcessing.tag) | quote }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          image: {{ include "mes.image" (dict "ctx" $ "image" $.Values.streamProcessing.image "tag" $.Values.streamProcessing.tag) | quote }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           resources:
-            {{- toYaml .Values.streamProcessing.resources | nindent 12 }}
+            {{- toYaml $.Values.streamProcessing.resources | nindent 12 }}
           livenessProbe:
             exec:
               command: ["sh", "-c", "pgrep -f streaming_job.py > /dev/null"]
@@ -89,3 +95,7 @@ spec:
           env:
             - name: JAVA_TOOL_OPTIONS
               value: "-Duser.home=/tmp"
+            - name: MACHINE_TYPES
+              value: {{ .machineTypes | quote }}
+---
+{{- end }}

@@ -54,7 +54,13 @@ ingestion:
 streamProcessing:
   image: mes/stream-processing
   tag: "0.1"
-  replicaCount: 1
+  instances:
+    - name: a
+      machineTypes: "A"
+    - name: b
+      machineTypes: "B"
+    - name: c
+      machineTypes: "C"
   resources:
     requests:
       cpu: 500m
