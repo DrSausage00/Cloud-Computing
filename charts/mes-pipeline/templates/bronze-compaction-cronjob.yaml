@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: silver-compaction
+  name: bronze-compaction
   namespace: {{ .Release.Namespace }}
 spec:
-  schedule: "*/30 * * * *"
+  schedule: "*/10 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 1
@@ -41,6 +41,6 @@ spec:
                 - name: JAVA_TOOL_OPTIONS
                   value: "-Duser.home=/tmp"
                 - name: TABLE_PATH
-                  value: "silver/machine-metrics"
+                  value: "bronze/machine-events"
                 - name: PARTITION_COLS
-                  value: "machine_type,event_date"
+                  value: "event_date"
