@@ -72,7 +72,7 @@ def _load_from_source(event_date_filter: Optional[date] = None) -> pd.DataFrame:
     last_exc = None
 
     filters = (
-        [("event_date", ">=", event_date_filter)] if event_date_filter else None
+        [("event_date", ">=", event_date_filter.isoformat())] if event_date_filter else None
     )
 
     for _attempt in range(3):
