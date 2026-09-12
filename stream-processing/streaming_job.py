@@ -148,37 +148,60 @@ status_checkpoint_path = f"{checkpoint_dir}/machine-status-{machine_types_suffix
 
 # Pfad für die Rohdaten der Maschinenmetriken
 bronze_path = f"s3a://{minio_data_bucket}/bronze/machine-events"
-bronze_checkpoint_path = f"{checkpoint_dir}/machine-events-{machine_types_suffix}"
+bronze_checkpoint_path = f"{checkpoint_dir}/machine-events-v2-{machine_types_suffix}"
 
 # schreibt den aktuellen Status aller Maschinen nach MinIO
+# Jede Instanz schreibt direkt in ihren eigenen machine_type-Ordner: So liegt auch
+# das Staging-Verzeichnis _temporary des Output-Committers je Instanz getrennt,
+# statt gemeinsam unter der Tabellenwurzel (dort kollidierten die Instanzen).
 def write_status_to_minio(batch_df, batch_id):
-    (batch_df.write
-     .mode("overwrite")
-     .partitionBy("machine_type")
-     .parquet(status_path)
-    )
+    for machine_type in machine_types:
+        part = batch_df.filter(col("machine_type") == machine_type).drop("machine_type")
+        if part.isEmpty():
+            continue
+        (part.write
+         .mode("overwrite")
+         .parquet(f"{status_path}/machine_type={machine_type}")
+        )
 
-# schreibt die Rohdaten der Maschinenmetriken nach MinIO
+
+# schreibt die Rohdaten nach MinIO - ueber foreachBatch statt ueber den nativen
+# File-Sink, weil dessen _spark_metadata-Log unter der Tabellenwurzel von allen
+# Instanzen geteilt wuerde (Batch-IDs kollidieren: "Race while writing batch").
+def write_bronze_to_minio(batch_df, batch_id):
+    for machine_type in machine_types:
+        part = batch_df.filter(col("machine_type") == machine_type).drop("machine_type")
+        if part.isEmpty():
+            continue
+        (part.write
+         .mode("append")
+         .partitionBy("event_date")
+         .parquet(f"{bronze_path}/machine_type={machine_type}")
+        )
+
 bronze_query = (bronze_stream.writeStream
-                .format("parquet")
+                .foreachBatch(write_bronze_to_minio)
                 .outputMode("append")
-                .option("path", bronze_path)
                 .option("checkpointLocation", bronze_checkpoint_path)
-                .partitionBy("event_date")
                 .start()
                 )
+
 
 def write_silver_to_minio(batch_df, batch_id):
     if batch_df.isEmpty():
         print(f"Silver batch {batch_id}: leer, wird nicht geschrieben")
         return
 
-    (
-        batch_df.write
-        .mode("append")
-        .partitionBy("machine_type", "event_date") # partitioniert die Daten nach Maschinen-Typ und Datum
-        .parquet(silver_path)
-    )
+    for machine_type in machine_types:
+        part = batch_df.filter(col("machine_type") == machine_type).drop("machine_type")
+        if part.isEmpty():
+            continue
+        (part.write
+         .mode("append")
+         .partitionBy("event_date")
+         .parquet(f"{silver_path}/machine_type={machine_type}")
+        )
+
     
 # gibt die 10-ekunden-Aggregation nach MinIO aus
 silver_query = (silver_stream.writeStream

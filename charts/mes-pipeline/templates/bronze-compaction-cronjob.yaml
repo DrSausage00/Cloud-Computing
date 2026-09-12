@@ -43,4 +43,4 @@ spec:
                 - name: TABLE_PATH
                   value: "bronze/machine-events"
                 - name: PARTITION_COLS
-                  value: "event_date"
+                  value: "machine_type,event_date"
