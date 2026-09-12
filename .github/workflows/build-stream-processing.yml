@@ -1,40 +1,16 @@
-name: Build & Push stream-processing
+name: Restart stream-processing
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "stream-processing/**"
   workflow_dispatch:
 
 jobs:
-  build:
+  restart:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Short SHA
-        id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Login to registry
-        uses: docker/login-action@v3
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
         with:
-          registry: ${{ vars.REGISTRY_HOST }}
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_PASS }}
-
-      - name: Build & push
-        uses: docker/build-push-action@v6
-        with:
-          context: stream-processing
-          push: true
-          cache-from: type=registry,ref=${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1
-          cache-to: type=inline
-          tags: |
-            ${{ vars.REGISTRY_HOST }}/mes/stream-processing:0.1
-            ${{ vars.REGISTRY_HOST }}/mes/stream-processing:${{ steps.sha.outputs.short }}
-
+          version: "v1.31.0"
 
       - name: Rollout restart
         run: |
