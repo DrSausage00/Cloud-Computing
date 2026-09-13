@@ -93,6 +93,11 @@ docker build -t mes-serving-api .
 docker run --rm -p 8000:8000 --env-file .env mes-serving-api
 ```
 
+Im Container startet Gunicorn mit einem Uvicorn-Worker (`-b [::]:8000`), nicht Uvicorn direkt:
+`uvicorn --host ::` bindet unter asyncio strikt IPv6 und ist in einem IPv4-Pod-Netz (minikube)
+nicht erreichbar, Gunicorn bindet dual-stack. Ein Worker, damit der In-Memory-Cache je Pod
+gilt (§9); `--timeout 120`, weil ein MinIO-Read länger als die 30 s Gunicorn-Default dauern kann.
+
 In Kubernetes werden dieselben Variablen über eine ConfigMap/Secret statt `--env-file` gesetzt.
 
 ## 6. Endpunkte

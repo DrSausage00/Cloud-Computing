@@ -115,7 +115,7 @@
   <text x="195" y="700" text-anchor="middle" font-size="10" fill="#64748b">Bucket "mes-data"</text>
   <text x="195" y="716" text-anchor="middle" font-size="10" fill="#64748b">+ separater Bucket</text>
   <text x="195" y="730" text-anchor="middle" font-size="10" fill="#64748b">"spark-checkpoints"</text>
-  <text x="570" y="700" text-anchor="middle" font-size="10" fill="#64748b">Buckets legt ein Helm-Hook-Job "create-buckets" an (post-install/upgrade)</text>
+  <text x="570" y="700" text-anchor="middle" font-size="10" fill="#64748b">Buckets legt ein Job "create-buckets-r&lt;Revision&gt;" an, parallel zum Rollout</text>
   <text x="570" y="716" text-anchor="middle" font-size="10" fill="#64748b">Zugriff: Spark über s3a://, Serving-API über s3fs/pyarrow, beide S3-API</text>
   <text x="570" y="730" text-anchor="middle" font-size="10" fill="#64748b">Zugangsdaten aus Secret "minio-credentials", PVC 10 Gi je Node</text>
 
@@ -168,7 +168,7 @@
 
   <text x="760" y="1054" font-size="11" fill="#334155">Konfiguration: ConfigMap "pipeline-config" (Grenzwerte, Pfade, Timeouts), per envFrom in jedem Pod</text>
   <text x="760" y="1076" font-size="11" fill="#334155">Secrets: Kubernetes Secret "minio-credentials" (MinIO, Stream Processing, CronJobs, Serving-API)</text>
-  <text x="760" y="1098" font-size="11" fill="#334155">Nicht als Box gezeigt: Helm-Hook-Job create-buckets, CI-ServiceAccount (nur deployments patch)</text>
+  <text x="760" y="1098" font-size="11" fill="#334155">Nicht als Box gezeigt: Job create-buckets, CI-ServiceAccount (nur deployments patch)</text>
   <text x="760" y="1120" font-size="11" fill="#334155">Kein separater Batch-Layer, Kappa: ein Pfad für alle Daten</text>
 
   <text x="1340" y="1170" text-anchor="end" font-size="9" fill="#94a3b8">Stand: entspricht dem tatsächlich deployten Helm-Chart (charts/mes-pipeline)</text>

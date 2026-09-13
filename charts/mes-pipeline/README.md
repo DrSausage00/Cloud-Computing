@@ -15,7 +15,7 @@ charts/mes-pipeline/
     ├── secret.yaml             # minio-credentials
     ├── kafka.yaml              # Headless Service + StatefulSet, 3 Broker, KRaft-Modus, PVC je Broker
     ├── minio.yaml              # Headless + ClusterIP Service, StatefulSet 4 Nodes (Distributed Mode, PVC je Node),
-    │                           #   Helm-Hook-Job create-buckets (post-install/post-upgrade)
+    │                           #   Job create-buckets-r<Revision> (bewusst kein Helm-Hook, siehe Haupt-README §9)
     ├── ingestion.yaml          # 3 Deployments per Helm-range (a/b/c), Init-Container wartet auf Kafka
     ├── stream-processing.yaml  # 3 Deployments per Helm-range (a/b/c), strategy Recreate, Spark im Local-Modus je Pod
     ├── compaction-cronjob.yaml       # CronJob: Silver-Kompaktierung, alle 30 Min

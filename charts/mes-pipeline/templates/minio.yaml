@@ -97,14 +97,16 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: create-buckets
+  # Bewusst KEIN Helm-Hook: Post-Install-Hooks laufen erst, wenn --wait alle Workloads
+  # bereit sieht. Die Serving-API wird aber erst bereit, wenn Spark geschrieben hat, und
+  # Spark braucht die Buckets. Als normaler Job startet er parallel zum Rollout, wartet in
+  # der Schleife unten auf MinIO und legt die Buckets an. Der Revisions-Suffix erlaubt den
+  # erneuten Lauf bei jedem Upgrade (Job-Specs sind unveraenderlich), TTL raeumt auf.
+  name: create-buckets-r{{ .Release.Revision }}
   namespace: {{ .Release.Namespace }}
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 3
+  ttlSecondsAfterFinished: 600
   template:
     spec:
       restartPolicy: OnFailure

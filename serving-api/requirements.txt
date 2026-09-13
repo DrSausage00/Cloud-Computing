@@ -4,3 +4,4 @@ pandas
 pyarrow
 s3fs
 redis
+gunicorn

@@ -18,5 +18,5 @@ COPY . .
 # Startbefehl für FastAPI/Uvicorn
 # Host 0.0.0.0 → Container ist von außen erreichbar
 # app.main:app → main.py liegt jetzt im app/-Package, nicht mehr im Root
-CMD ["uvicorn", "app.main:app", "--host", "::", "--port", "8000"]
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "1", "-b", "[::]:8000", "--timeout", "120", "app.main:app"]
 

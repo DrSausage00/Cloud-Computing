@@ -62,6 +62,11 @@ for attempt in range(1, max_attempts + 1):
         run_compaction()
         break
     except Exception as exc:
+        msg = str(exc)
+        if "PATH_NOT_FOUND" in msg or "does not exist" in msg or "NoSuchBucket" in msg:
+            # Frischer Cluster oder noch kein Tag geschrieben: nichts zu kompaktieren.
+            print(f"Noch keine Daten unter {table_path} / {event_date}, nichts zu tun.")
+            break
         if attempt == max_attempts:
             raise
         print(f"Kompaktierung fehlgeschlagen (Versuch {attempt}/{max_attempts}): {exc}")

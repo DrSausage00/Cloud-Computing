@@ -242,13 +242,17 @@ damit gleichzeitig die Obergrenze der Parallelität, siehe §8.
 | UI | Dash (Plotly) | Reine Anzeige-Rolle, Python-Stack wie der Rest, Zeitreihen-Charts eingebaut; Polling statt WebSocket, damit die UI-Pods zustandslos bleiben |
 | Deployment | Helm-Chart, ein Chart für minikube und DHBW Cloud | `range` über Instanzlisten und eine einzige `values-dhbw.yaml` als Umgebungs-Overlay; siehe §8/§9 |
 
-**Was außerdem im Chart steckt, aber im Diagramm nicht als Box erscheint.** Ein Helm-Hook-Job
-`create-buckets` legt nach jedem `helm install`/`upgrade` die Buckets `mes-data` und
-`spark-checkpoints` an ([`minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L97)); er läuft
-einmalig und löscht sich selbst. Er nutzt dafür bewusst das ohnehin vorhandene MinIO-Image
-(das `mc` enthält) statt eines separaten `minio/mc:latest`, ein ungepinntes Docker-Hub-Image
-hat den Upgrade einmal auf einem Knoten ohne Image-Cache scheitern lassen. Dazu kommen die ConfigMap `pipeline-config`, das Secret
-`minio-credentials` und ein auf `deployments` beschränkter ServiceAccount für die CI (§9).
+**Was außerdem im Chart steckt, aber im Diagramm nicht als Box erscheint.** Ein Job
+`create-buckets-r<Revision>` legt bei jedem `helm install`/`upgrade` die Buckets `mes-data` und
+`spark-checkpoints` an ([`minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L97)). Er ist
+bewusst **kein** Helm-Hook: Hooks laufen erst, wenn `--wait` alle Workloads bereit sieht, und
+das wären sie ohne Buckets nie (§9, „Was der frische Durchlauf gefunden hat"). Als normaler
+Job startet er parallel zum Rollout, wartet in einer Schleife auf MinIO und räumt sich per
+`ttlSecondsAfterFinished` selbst auf. Er nutzt das ohnehin vorhandene MinIO-Image (das `mc`
+enthält) statt eines separaten `minio/mc:latest`, ein ungepinntes Docker-Hub-Image hat den
+Upgrade einmal auf einem Knoten ohne Image-Cache scheitern lassen. Dazu kommen die ConfigMap
+`pipeline-config`, das Secret `minio-credentials` und ein auf `deployments` beschränkter
+ServiceAccount für die CI (§9).
 
 **Warum Ingestion und Stream Processing als je drei Instanzen statt einer.** Beide Komponenten
 sind entlang derselben Achse (Maschinentyp) horizontal aufgeteilt, nicht über naive
@@ -577,11 +581,11 @@ Alles läuft im Namespace `mes` aus einem einzigen Helm-Chart
 | Kafka | **StatefulSet** `kafka`, 3 Replicas, `podManagementPolicy: Parallel` | Broker brauchen stabile Netzwerknamen (`kafka-0..2.kafka.mes.svc`) für das KRaft-Quorum und je eine eigene Platte | Headless, `publishNotReadyAddresses: true` | PVC je Broker, 5 Gi | TCP 9092 |
 | MinIO | **StatefulSet** `minio`, 4 Replicas | Distributed Mode adressiert die Knoten per Namen (`minio-{0...3}`); Erasure Coding braucht feste Zuordnung Pod ↔ Platte | Headless + ClusterIP (`minio:9000`, Konsole 9001) | PVC je Knoten, 10 Gi | HTTP `/minio/health/*` |
 | Ingestion | **3 Deployments** `ingestion-a/b/c`, je 1 Replica | zustandslos, aber je Typ genau eine Instanz (siehe unten) | keiner (nur Producer) | keine | `pgrep main.py` |
-| Stream Processing | **3 Deployments** `stream-processing-a/b/c`, je 1 Replica, `strategy: Recreate` | Zustand liegt im Checkpoint in MinIO, nicht im Pod; `Recreate` verhindert zwei Instanzen auf demselben Checkpoint während eines Rollouts | keiner | Checkpoints in MinIO (Bucket `spark-checkpoints`) | `pgrep streaming_job.py`, erst nach 150 s (Spark-Start) |
+| Stream Processing | **3 Deployments** `stream-processing-a/b/c`, je 1 Replica, `strategy: Recreate`, Init-Container wartet auf Kafka und MinIO | Zustand liegt im Checkpoint in MinIO, nicht im Pod; `Recreate` verhindert zwei Instanzen auf demselben Checkpoint während eines Rollouts; der Init-Container verhindert Fehlstarts bei einem frischen Install, bevor MinIO bereit ist | keiner | Checkpoints in MinIO (Bucket `spark-checkpoints`) | `pgrep streaming_job.py`, erst nach 150 s (Spark-Start) |
 | Kompaktierung | **2 CronJobs** `silver-compaction` (\*/30), `bronze-compaction` (\*/10), `concurrencyPolicy: Forbid` | kurze, periodische Batch-Arbeit; ein Dauer-Pod würde Ressourcen binden und hätte keine Lauf-Historie | keiner | keine | keine |
 | Serving-API | **Deployment** `serving-api` + **HPA** | zustandslos (Cache pro Pod ist nur Beschleunigung) | ClusterIP `serving-api:8000` | keine | `/health` (liveness, startup), `/ready` (prüft MinIO-Lesbarkeit) |
 | UI | **Deployment** `ui`, 2 Replicas | zustandslos, Zustand steckt in der URL | NodePort 30080 (minikube) bzw. ClusterIP + Ingress mit TLS (DHBW) | keine | `/health` |
-| Bucket-Anlage | **Job** `create-buckets` als Helm-Hook (`post-install,post-upgrade`) | einmalige Initialisierung, kein Dauerbetrieb | keine | keine | keine |
+| Bucket-Anlage | **Job** `create-buckets-r<Revision>`, bewusst kein Helm-Hook (§9) | einmalige Initialisierung je Release-Revision, wartet in einer Schleife auf MinIO, räumt sich per TTL selbst auf | keine | keine | keine |
 
 ### Konfiguration und Secrets
 
@@ -682,20 +686,22 @@ cp values-secret.yaml.example values-secret.yaml
 
 ### Weg A: minikube (lokal, ohne Registry)
 
-Die vier eigenen Images werden direkt in die Docker-Engine von minikube gebaut; das Chart
-referenziert sie ohne Registry-Präfix (`mes/<komponente>:0.1`, `imagePullPolicy: IfNotPresent`).
+Die vier eigenen Images werden lokal gebaut und in minikube geladen; das Chart referenziert
+sie ohne Registry-Präfix (`mes/<komponente>:0.1`, `imagePullPolicy: IfNotPresent`). Das
+`image load` funktioniert unabhängig davon, ob minikube mit Docker oder containerd als
+Runtime läuft.
 
 ```bash
-minikube start --cpus 8 --memory 16g          # Kafka (3) + MinIO (4) + Spark (3) brauchen Platz
-minikube addons enable metrics-server         # nötig für die HPA
-eval $(minikube docker-env)                   # Windows/PowerShell: minikube docker-env | Invoke-Expression
+minikube start --driver=docker --cpus 6 --memory 10g   # Kafka (3) + MinIO (4) + Spark (3) brauchen Platz
+minikube addons enable metrics-server                  # nötig für die HPA
 
 docker build -t mes/ingestion:0.1         ingestion/
 docker build -t mes/stream-processing:0.1 stream-processing/   # ~700 MB Spark-Pakete, dauert
 docker build -t mes/serving-api:0.1       serving-api/
 docker build -t mes/ui:0.1                ui/
+for c in ingestion stream-processing serving-api ui; do minikube image load mes/$c:0.1; done
 
-helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait --timeout 10m
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait --timeout 15m
 
 kubectl get pods -n mes                       # alles Running, CronJob-Pods Completed
 minikube service ui -n mes                    # öffnet die UI (NodePort 30080)
@@ -838,6 +844,27 @@ Registry-Tunnels sprengt, für diese eine Komponente läuft Build & Push deshalb
 (Punkt 4), der vierte Workflow ist nur per `workflow_dispatch` auslösbar und übernimmt den
 Rollout-Restart der drei Instanzen.
 
+### Was der frische Durchlauf gefunden hat
+
+Weg A wurde am 13.09.2026 auf einem neu angelegten minikube (WSL, Docker-Treiber, containerd)
+komplett durchgespielt (Screenshot 12). Der erste Versuch scheiterte an zwei Stellen, die auf
+dem DHBW-Cluster nie aufgefallen wären, weil dort alles bereits lief:
+
+| Fehlerbild | Ursache | Korrektur |
+|---|---|---|
+| `minio-0` in `ImagePullBackOff` | `docker.io/minio/minio@sha256:…` ist von Docker Hub nicht mehr anonym ziehbar („pull access denied, repository does not exist"); auf den DHBW-Knoten lag das Image nur noch im Cache | `values.yaml`: dasselbe Release als `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` |
+| Serving-API alle 155 s neu gestartet, Startup-Probe „connection refused" | `uvicorn --host ::` bindet unter asyncio strikt IPv6; auf minikube (IPv4-Pod-Netz) erreicht die Probe den Port nie, auf der DHBW Cloud (IPv6-Pods) fällt das nicht auf | Gunicorn mit Uvicorn-Worker und `-b [::]:8000`, das dual-stack bindet, wie die UI es schon tat |
+| Stream Processing in `CrashLoopBackOff`, `NoSuchBucket`; `helm --wait` läuft in den Timeout | Der Bucket-Job war ein `post-install`-Hook. Hooks laufen erst, wenn `--wait` alle Workloads bereit sieht; die Serving-API wird erst bereit, wenn Spark geschrieben hat; Spark braucht die Buckets. Ein Deadlock, der auf der DHBW Cloud nie auftrat, weil die Buckets dort seit dem allerersten Install existieren | Bucket-Anlage als normaler Job (`create-buckets-r<Revision>`, `ttlSecondsAfterFinished`), der parallel zum Rollout startet und in einer Schleife auf MinIO wartet |
+| Compaction-Jobs `Failed` in den ersten Minuten | `compact.py` behandelte einen noch nicht existierenden Tabellenpfad als Fehler | Fehlender Pfad wird als „nichts zu tun" mit Exit 0 behandelt |
+
+Dazu kam ein Init-Container für Stream Processing, der wie bei der Ingestion auf Kafka und
+MinIO wartet, damit Spark auf einem frischen Cluster nicht mehrfach gegen einen noch nicht
+gestarteten Speicher anläuft.
+
+Alle vier sind Reproduzierbarkeitsfehler im Wortsinn: Das Chart funktionierte nur auf dem einen
+Cluster, auf dem es entstanden ist. Genau deshalb steht der frische Durchlauf in der Anleitung,
+und genau deshalb ist er hier dokumentiert statt verschwiegen.
+
 ### Abbau
 
 ```bash
@@ -889,7 +916,7 @@ gemacht", sondern was daran eine Entscheidung oder ein Verständnis zeigt.
 | [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml#L10) | `podManagementPolicy: Parallel` + `publishNotReadyAddresses`, die beiden Bootstrapping-Deadlocks beim 3-Broker-KRaft-Umbau (Broker warten aufeinander, bevor sie Ready sind) |
 | [`charts/mes-pipeline/templates/ingestion.yaml`](charts/mes-pipeline/templates/ingestion.yaml#L1), [`stream-processing.yaml`](charts/mes-pipeline/templates/stream-processing.yaml#L1) | Helm-`range` über eine Instanzliste statt `replicas: N`, die eigentliche horizontale Skalierung |
 | [`charts/mes-pipeline/templates/serving-api.yaml`](charts/mes-pipeline/templates/serving-api.yaml#L74) | HPA ohne von Helm verwaltete `replicas`, kein Kampf zwischen `helm upgrade` und der Autoskalierung |
-| [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L82) | Distributed-Mode-Adressierung `minio-{0...3}` aus `replicaCount` berechnet, plus Helm-Hook-Job für die Buckets |
+| [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L82) | Distributed-Mode-Adressierung `minio-{0...3}` aus `replicaCount` berechnet, plus Bucket-Job (bewusst kein Helm-Hook, §9) |
 | [`charts/mes-pipeline/templates/configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml), [`secret.yaml`](charts/mes-pipeline/templates/secret.yaml) | alle Laufzeitwerte und Zugangsdaten außerhalb der Images; `checksum/config`-Annotation in den Deployments löst Rollouts bei Änderungen aus |
 | [`charts/mes-pipeline/templates/compaction-cronjob.yaml`](charts/mes-pipeline/templates/compaction-cronjob.yaml), [`bronze-compaction-cronjob.yaml`](charts/mes-pipeline/templates/bronze-compaction-cronjob.yaml) | periodische Kompaktierung als eigener, kurzlebiger Workload-Typ statt Dauerbetrieb |
 | [`charts/mes-pipeline/values.yaml`](charts/mes-pipeline/values.yaml), [`values-dhbw.yaml`](charts/mes-pipeline/values-dhbw.yaml) | ein Chart, zwei Umgebungen: das Overlay überschreibt nur Registry, Pull-Policy und UI-Exposition |
@@ -1004,13 +1031,22 @@ zurückgeschrieben (§6, Small-Files-Problem).*
 ![Helm-Deployment](docs/screenshots/10-helm-deploy-fresh.png)
 *Reproduzierbarkeit: der dokumentierte `helm upgrade --install`-Befehl aus §9 gegen das laufende
 Release, danach `helm history`. Revision 34 ist der in §4 beschriebene fehlgeschlagene Lauf
-(Hook-Image nicht ziehbar), Revision 35 der erfolgreiche Lauf mit dem korrigierten Chart 0.2.0
+(Image des Bucket-Jobs nicht ziehbar), Revision 35 der erfolgreiche Lauf mit dem korrigierten Chart 0.2.0
 direkt danach, der Deploy-Weg funktioniert, und Helm hält die Historie nachvollziehbar fest.*
 
 ![Ereignisse im Kafka-Topic](docs/screenshots/11-kafka-console-consumer.png)
 *Beispiel-Output der Ingestion: normalisierte Ereignisse aus dem Topic `machine-events` mit Key
 (`machine_id`) und Partition, Typ B auf Partition 1, Typ C auf Partition 2, jeweils mit der
 generischen `measurements`-Map und `schema_version` (§2, §4).*
+
+![Frischer Install auf minikube](docs/screenshots/12-minikube-fresh-install.png)
+*Reproduzierbarkeit, zweiter Cluster: Weg A aus §9 auf einem neu angelegten minikube, Context
+`minikube`, Release `deployed`, alle Pods `Running` bzw. Compaction-Pods `Completed`, UI über
+NodePort erreichbar. Dasselbe Chart, dieselben Images, nur `values.yaml` ohne Overlay.*
+
+![UI auf minikube](docs/screenshots/14-minikube-ui.png)
+*Dieselbe UI auf dem minikube-Cluster wenige Minuten nach dem frischen Install, mit echten
+Daten aus der dort neu angelaufenen Pipeline.*
 
 ---
 

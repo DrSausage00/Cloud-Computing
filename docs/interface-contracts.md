@@ -59,7 +59,7 @@ automatisch). Umbenennungen bestehender Felder brauchen eine Änderung in
 | Vertrag | Wert |
 |---|---|
 | Endpoint | `http://minio:9000` (Konsole `:9001`) |
-| Buckets | `mes-data` (fachlich), `spark-checkpoints` (Checkpoints), beide per Helm-Hook-Job angelegt |
+| Buckets | `mes-data` (fachlich), `spark-checkpoints` (Checkpoints), beide per Job `create-buckets-r<Revision>` angelegt (kein Helm-Hook, siehe README §9) |
 | Bronze | `mes-data/bronze/machine-events/machine_type=<X>/event_date=<D>/`, Parquet, append; Schreibpfad je Instanz ist `…/machine_type=<X>/` |
 | Silver-Metrics | `mes-data/silver/machine-metrics/machine_type=<X>/event_date=<D>/`, Parquet, append; Schreibpfad je Instanz ist `…/machine_type=<X>/` |
 | Silver-Status | `mes-data/silver/machine-status/machine_type=<X>/`, Parquet, overwrite des eigenen Ordners |
