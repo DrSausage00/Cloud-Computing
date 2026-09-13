@@ -110,7 +110,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: create-buckets
-          image: minio/mc:latest
+          image: {{ .Values.minio.image | quote }}
           envFrom:
             - configMapRef:
                 name: pipeline-config
