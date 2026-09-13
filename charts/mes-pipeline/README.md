@@ -89,7 +89,7 @@ Image oder im Deployment-Manifest.
 
 ## Autoskalierung der Serving-API
 
-`serving-api.yaml` definiert bewusst **kein** `replicas`-Feld im `Deployment` — das überlässt
+`serving-api.yaml` definiert bewusst **kein** `replicas`-Feld im `Deployment`, das überlässt
 Helm das Feld vollständig dem `HorizontalPodAutoscaler`. Würde Helm bei jedem `upgrade` einen
 festen `replicas`-Wert zurückschreiben, würde das mit der HPA um die Pod-Zahl konkurrieren.
 
@@ -104,6 +104,6 @@ servingApi:
 ## CI/CD-Anbindung
 
 `ci-rbac.yaml` legt eine eigene ServiceAccount `github-actions-restarter` mit einer `Role` an,
-die ausschließlich `get/list/patch` auf `apps/deployments` im Namespace `mes` erlaubt — kein
+die ausschließlich `get/list/patch` auf `apps/deployments` im Namespace `mes` erlaubt, kein
 Cluster-Admin-Zugriff für die CI-Pipeline. Details zum Zusammenspiel mit den
 GitHub-Actions-Workflows: Haupt-README §9.

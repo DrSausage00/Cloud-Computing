@@ -1,4 +1,4 @@
-# UI — MES Monitoring
+# UI, MES Monitoring
 
 Weboberfläche der Pipeline. Zeigt die aggregierten Maschinenmetriken aus der
 Silver-Schicht (`silver_machine_metrics`, siehe `ingestion/storage/schema.sql`).
@@ -22,7 +22,7 @@ spricht weder Kafka noch MinIO direkt an.
 Für die lokale Entwicklung ohne laufende API liefert `data_source.py` bei
 `USE_MOCK=true` erfundene Daten im Format der Silver-Tabelle. Im Kubernetes-Deployment
 steht `USE_MOCK` in der ConfigMap `pipeline-config` auf `false` und `API_BASE_URL` auf
-`http://serving-api:8000` — die deployte UI zeigt ausschließlich echte Pipeline-Daten.
+`http://serving-api:8000`, die deployte UI zeigt ausschließlich echte Pipeline-Daten.
 
 Erwartete Endpunkte:
 
@@ -41,10 +41,12 @@ und die UI zeigt „Keine Maschinendaten verfügbar" statt einer Fehlerseite.
 | `/machine/<id>` | Detail: Kennzahlenzeile des letzten Fensters, Temperaturverlauf der letzten `HISTORY_MINUTES` mit Min-Max-Band und Grenzwertlinie |
 | `/messwerte` | Tabelle aller Fenster aller Maschinen, sortier- und filterbar, Zeilen mit `limit_exceeded` rot |
 
-Ampellogik (`traffic_light()` in `app.py`): rot bei `last_status` `ERROR` oder `STOPPED`,
-gelb bei `OFF` (Typ A außerhalb der Betriebszeit) und `PAUSED` (Typ C) sowie bei
-`limit_exceeded`, sonst grün. Typ B liefert keinen Status und ist daher nur über den
-Grenzwert gelb oder grün.
+Ampellogik (`traffic_light()` in `app.py`): Die typspezifischen Statuswörter werden über die
+Tabelle `OPERATING_STATE` auf drei Betriebszustände abgebildet (`laeuft`: `RUNNING`,
+`STARTING`, `COOLING`; `steht`: `OFF`, `PAUSED`, `STOPPED`; `fehler`: `ERROR`). Rot bei
+`fehler`, gelb bei `steht` oder `limit_exceeded`, sonst grün. Typ B liefert keinen Status und
+gilt als laufend, ist also nur über den Grenzwert gelb oder grün. Ein neuer Maschinentyp mit
+eigenen Statuswörtern braucht nur Einträge in dieser Tabelle.
 
 ## Aktualisierung
 
@@ -75,8 +77,8 @@ docker run -p 8050:8050 -e USE_MOCK=true mes-ui
 |---|---|
 | Interner Port | `8050` |
 | Health-Endpunkt | `GET /health` → `{"status": "ok"}`, für Readiness- und Liveness-Probe |
-| Secrets | keine — die UI liest nur, ohne Authentifizierung |
-| PVC | nein — die UI hält keinen Zustand auf Platte |
+| Secrets | keine, die UI liest nur, ohne Authentifizierung |
+| PVC | nein, die UI hält keinen Zustand auf Platte |
 | Replicas | 2 als Default, für den Skalierungsnachweis auf 3+ hochziehen |
 | Workload-Typ | `Deployment` (kein StatefulSet, da zustandslos) |
 

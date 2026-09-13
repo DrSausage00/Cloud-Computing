@@ -1,4 +1,4 @@
-# Terraform — Infrastruktur in der DHBW Cloud
+# Terraform, Infrastruktur in der DHBW Cloud
 
 Provisioniert das k3s-Cluster für die MES-Pipeline: ein Master und zwei Worker in der
 DHBW-Cloud (`newstack.dhbw.cloud`), plus das Ansible-Inventar für den nächsten Schritt.
@@ -18,7 +18,7 @@ Ausgabe von `openstack flavor list`, damit die Flavor-Wahl unten nachvollziehbar
 | `openstack_compute_instance_v2.worker` (×2) | `general.small`, 2 vCPU / 8 GB / 50 GB je Knoten |
 | `local_file.ansible_inventory` | schreibt `generated-inventory.yml` aus den echten Adressen |
 
-**Macht 8 vCPU insgesamt** (4 + 2 + 2) — bewusst klein gehalten, weil sich der ganze Kurs ein
+**Macht 8 vCPU insgesamt** (4 + 2 + 2), bewusst klein gehalten, weil sich der ganze Kurs ein
 Kontingent von 100 vCPU teilt.
 
 ## Voraussetzungen
@@ -40,9 +40,9 @@ terraform output
 ssh ubuntu@$(terraform output -raw master_ip)
 ```
 
-## Größe ändern — die eine Falle dabei
+## Größe ändern, die eine Falle dabei
 
-Ein Resize kann die Root-Platte einer **bestehenden** Instanz nur vergrößern, nie verkleinern —
+Ein Resize kann die Root-Platte einer **bestehenden** Instanz nur vergrößern, nie verkleinern,
 unabhängig von Flavor oder Image. Ein Wechsel auf einen Flavor mit weniger Platte scheitert mit:
 
 ```
@@ -58,9 +58,9 @@ terraform apply -replace='openstack_compute_instance_v2.worker[0]' \
 ```
 
 Kostet neue IP-Adressen (Inventar wird automatisch neu geschrieben) und alles, was auf der
-alten Platte lag — unkritisch, solange noch nichts deployt ist.
+alten Platte lag, unkritisch, solange noch nichts deployt ist.
 
-## Was hier abweicht — gegenüber der Kursvorlage
+## Was hier abweicht, gegenüber der Kursvorlage
 
 | | Vorlage aus dem Übungs-Track der Vorlesung | Hier | Warum |
 |---|---|---|---|

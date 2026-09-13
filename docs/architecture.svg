@@ -7,7 +7,7 @@
 
   <rect x="0" y="0" width="1360" height="1180" fill="#ffffff"/>
 
-  <text x="680" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">MES Streaming Pipeline — Architektur (Kappa)</text>
+  <text x="680" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">MES Streaming Pipeline: Architektur (Kappa)</text>
   <text x="680" y="60" text-anchor="middle" font-size="13" fill="#64748b">Kubernetes-Namespace "mes" · DHBW Cloud (k3s, 3 Nodes) / minikube</text>
 
   <!-- Cluster boundary -->
@@ -38,7 +38,7 @@
     <text x="715" y="214" text-anchor="middle" font-size="11" fill="#334155">Pipe-separiert</text>
     <text x="715" y="230" text-anchor="middle" font-size="10" fill="#64748b">→ Partition 2</text>
   </g>
-  <text x="1040" y="190" font-size="11" fill="#64748b" text-anchor="middle">Bewusst KEIN "replicas: 3" —</text>
+  <text x="1040" y="190" font-size="11" fill="#64748b" text-anchor="middle">Bewusst KEIN "replicas: 3",</text>
   <text x="1040" y="206" font-size="11" fill="#64748b" text-anchor="middle">jede Replica würde denselben Typ</text>
   <text x="1040" y="222" font-size="11" fill="#64748b" text-anchor="middle">doppelt erzeugen (Duplikate).</text>
 
@@ -51,7 +51,7 @@
   <rect x="60" y="280" width="770" height="80" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
   <text x="445" y="308" text-anchor="middle" font-size="15" font-weight="700" fill="#78350f">Kafka (StatefulSet, 3 Broker, KRaft-Modus)</text>
   <text x="445" y="328" text-anchor="middle" font-size="11" fill="#78350f">Topic "machine-events" · 3 Partitionen, RF 1 (Key = machine_id, explizit zugeordnet) · Retention 7 Tage (= Bronze in Kappa)</text>
-  <text x="445" y="345" text-anchor="middle" font-size="10" fill="#92400e">Broker skalieren durch mehr Partitionen — nicht durch mehr Broker allein</text>
+  <text x="445" y="345" text-anchor="middle" font-size="10" fill="#92400e">Broker skalieren durch mehr Partitionen, nicht durch mehr Broker allein</text>
 
   <!-- label sits clear above the arrow band, arrows occupy a separate lower band -->
   <text x="60" y="378" font-size="13" font-weight="700" fill="#0f172a">Stream Processing (Deployment × 3, Spark Structured Streaming, je Maschinentyp gefiltert)</text>
@@ -85,7 +85,7 @@
     <text x="715" y="522" text-anchor="middle" font-size="10" fill="#64748b">eigener Checkpoint-Pfad</text>
   </g>
   <text x="1040" y="468" font-size="11" fill="#64748b" text-anchor="middle">Grenze: skaliert nur bis zur</text>
-  <text x="1040" y="484" font-size="11" fill="#64748b" text-anchor="middle">Kafka-Partitionszahl (hier 3) —</text>
+  <text x="1040" y="484" font-size="11" fill="#64748b" text-anchor="middle">Kafka-Partitionszahl (hier 3),</text>
   <text x="1040" y="500" font-size="11" fill="#64748b" text-anchor="middle">mehr Instanzen ohne mehr</text>
   <text x="1040" y="516" font-size="11" fill="#64748b" text-anchor="middle">Partitionen bringen nichts.</text>
 
@@ -95,7 +95,7 @@
 
   <!-- ===== Row 4: MinIO (title now INSIDE the box, like Kafka, no external label to collide with arrows) ===== -->
   <rect x="60" y="578" width="770" height="170" rx="10" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5"/>
-  <text x="445" y="602" text-anchor="middle" font-size="14" font-weight="700" fill="#831843">MinIO (StatefulSet, 4 Nodes, Distributed + Erasure Coding EC:2) — Bronze- und Silver-Schicht</text>
+  <text x="445" y="602" text-anchor="middle" font-size="14" font-weight="700" fill="#831843">MinIO (StatefulSet, 4 Nodes, Distributed + Erasure Coding EC:2), Bronze- und Silver-Schicht</text>
 
   <rect x="80" y="616" width="230" height="60" rx="8" fill="#ffffff" stroke="#db2777" stroke-width="1"/>
   <text x="195" y="638" text-anchor="middle" font-size="12" font-weight="600" fill="#831843">bronze/machine-events</text>
@@ -116,7 +116,7 @@
   <text x="195" y="716" text-anchor="middle" font-size="10" fill="#64748b">+ separater Bucket</text>
   <text x="195" y="730" text-anchor="middle" font-size="10" fill="#64748b">"spark-checkpoints"</text>
   <text x="570" y="700" text-anchor="middle" font-size="10" fill="#64748b">Buckets legt ein Helm-Hook-Job "create-buckets" an (post-install/upgrade)</text>
-  <text x="570" y="716" text-anchor="middle" font-size="10" fill="#64748b">Zugriff: Spark über s3a://, Serving-API über s3fs/pyarrow — beide S3-API</text>
+  <text x="570" y="716" text-anchor="middle" font-size="10" fill="#64748b">Zugriff: Spark über s3a://, Serving-API über s3fs/pyarrow, beide S3-API</text>
   <text x="570" y="730" text-anchor="middle" font-size="10" fill="#64748b">Zugangsdaten aus Secret "minio-credentials", PVC 10 Gi je Node</text>
 
   <!-- Compaction cronjobs box -->
@@ -150,18 +150,18 @@
   <!-- Legend: one swatch per box colour, so every colour in the picture is explained -->
   <text x="60" y="1030" font-size="13" font-weight="700" fill="#0f172a">Legende</text>
   <rect x="60" y="1042" width="18" height="14" fill="#eff6ff" stroke="#3b82f6"/>
-  <text x="86" y="1054" font-size="11" fill="#334155">Deployment — Ingestion (× 3 per Helm-range)</text>
+  <text x="86" y="1054" font-size="11" fill="#334155">Deployment, Ingestion (× 3 per Helm-range)</text>
   <rect x="60" y="1064" width="18" height="14" fill="#f0fdf4" stroke="#16a34a"/>
-  <text x="86" y="1076" font-size="11" fill="#334155">Deployment — Stream Processing (× 3 per Helm-range)</text>
+  <text x="86" y="1076" font-size="11" fill="#334155">Deployment, Stream Processing (× 3 per Helm-range)</text>
   <rect x="60" y="1086" width="18" height="14" fill="#eef2ff" stroke="#4f46e5"/>
-  <text x="86" y="1098" font-size="11" fill="#334155">Deployment + HPA — Serving-API</text>
+  <text x="86" y="1098" font-size="11" fill="#334155">Deployment + HPA, Serving-API</text>
   <rect x="60" y="1108" width="18" height="14" fill="#f5f3ff" stroke="#7c3aed"/>
-  <text x="86" y="1120" font-size="11" fill="#334155">Deployment — UI</text>
+  <text x="86" y="1120" font-size="11" fill="#334155">Deployment, UI</text>
 
   <rect x="400" y="1042" width="18" height="14" fill="#fef3c7" stroke="#d97706"/>
-  <text x="426" y="1054" font-size="11" fill="#334155">StatefulSet + PVC (5 Gi × 3) — Kafka</text>
+  <text x="426" y="1054" font-size="11" fill="#334155">StatefulSet + PVC (5 Gi × 3), Kafka</text>
   <rect x="400" y="1064" width="18" height="14" fill="#fdf2f8" stroke="#db2777"/>
-  <text x="426" y="1076" font-size="11" fill="#334155">StatefulSet + PVC (10 Gi × 4) — MinIO</text>
+  <text x="426" y="1076" font-size="11" fill="#334155">StatefulSet + PVC (10 Gi × 4), MinIO</text>
   <rect x="400" y="1086" width="18" height="14" fill="#fff7ed" stroke="#ea580c"/>
   <text x="426" y="1098" font-size="11" fill="#334155">CronJob (Batch, kein Dauerbetrieb)</text>
   <text x="400" y="1120" font-size="11" fill="#334155">Pfeile = Datenfluss</text>
@@ -169,7 +169,7 @@
   <text x="760" y="1054" font-size="11" fill="#334155">Konfiguration: ConfigMap "pipeline-config" (Grenzwerte, Pfade, Timeouts), per envFrom in jedem Pod</text>
   <text x="760" y="1076" font-size="11" fill="#334155">Secrets: Kubernetes Secret "minio-credentials" (MinIO, Stream Processing, CronJobs, Serving-API)</text>
   <text x="760" y="1098" font-size="11" fill="#334155">Nicht als Box gezeigt: Helm-Hook-Job create-buckets, CI-ServiceAccount (nur deployments patch)</text>
-  <text x="760" y="1120" font-size="11" fill="#334155">Kein separater Batch-Layer — Kappa: ein Pfad für alle Daten</text>
+  <text x="760" y="1120" font-size="11" fill="#334155">Kein separater Batch-Layer, Kappa: ein Pfad für alle Daten</text>
 
   <text x="1340" y="1170" text-anchor="end" font-size="9" fill="#94a3b8">Stand: entspricht dem tatsächlich deployten Helm-Chart (charts/mes-pipeline)</text>
 </svg>

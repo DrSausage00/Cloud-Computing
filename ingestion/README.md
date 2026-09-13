@@ -52,7 +52,7 @@ umgehen können (siehe [README](../README.md) §2 und
 [interface-contracts.md](../docs/interface-contracts.md)).
 
 Folge stromabwärts: `last_status` ist für Maschinen vom Typ B dauerhaft `null`. Die UI zeigt
-dafür eine neutrale Anzeige — es ist kein Fehler in der Ingestion und kein Datenverlust.
+dafür eine neutrale Anzeige, es ist kein Fehler in der Ingestion und kein Datenverlust.
 
 ## Partitionierung
 
@@ -60,7 +60,7 @@ dafür eine neutrale Anzeige — es ist kein Fehler in der Ingestion und kein Da
 Partition zu, statt die Verteilung dem Standard-Partitionierer zu überlassen.
 
 Grund: Der Standard-Partitionierer hasht die `machine_id`. Bei nur drei verschiedenen
-Schlüsseln (`A-001`, `B-001`, `C-001`) landen alle drei zufällig auf derselben Partition —
+Schlüsseln (`A-001`, `B-001`, `C-001`) landen alle drei zufällig auf derselben Partition,
 die effektive Parallelität im Topic wäre 1 statt 3, unabhängig von der Anzahl der
 Consumer oder Spark-Executors. Die feste Zuordnung verteilt garantiert gleichmäßig und
 hält weiterhin die Reihenfolge je Maschine ein, weil dieselbe Maschine immer in derselben
@@ -91,7 +91,7 @@ Ein unbekannter Typ oder eine leere Liste in `MACHINE_TYPES` beendet den Prozess
 mit einer Fehlermeldung, statt still nichts zu produzieren.
 
 [`.env.example`](.env.example) ist die Vorlage für die MinIO-Zugangsdaten, die
-`docker-compose.yml` benötigt — nicht für die Ingestion selbst.
+`docker-compose.yml` benötigt, nicht für die Ingestion selbst.
 
 ## Horizontale Skalierung
 
@@ -108,7 +108,7 @@ Das passt zur festen Partitionszuordnung oben: Jeder Pod schreibt in genau eine 
 die Reihenfolge je Maschine bleibt erhalten und das Topic wird tatsächlich parallel
 beschrieben.
 
-Wichtig: Ein Deployment einfach auf `replicas: 3` zu setzen skaliert **nicht** — jede Replica
+Wichtig: Ein Deployment einfach auf `replicas: 3` zu setzen skaliert **nicht**, jede Replica
 würde denselben Typ mit demselben `machine_id` simulieren und Duplikate erzeugen. Die
 Aufteilung muss über `MACHINE_TYPES` erfolgen, also über je ein Deployment pro Typ.
 

@@ -8,7 +8,7 @@ Einordnung in die Gesamtarchitektur: siehe Haupt-README, §4 und §5.
 
 - Einlesen normalisierter Maschinendaten aus Kafka
 - Parsen der Kafka-Nachrichten (Envelope mit generischer `measurements`-Map) in strukturierte Spark-Spalten
-- Filterung auf den/die Maschinentyp(en) dieser Instanz (`MACHINE_TYPES`) — Grundlage der horizontalen Skalierung
+- Filterung auf den/die Maschinentyp(en) dieser Instanz (`MACHINE_TYPES`), Grundlage der horizontalen Skalierung
 - Verarbeitung anhand der Event-Zeit, 10-Sekunden-Fenster je Maschine
 - Behandlung verspäteter Daten mittels Watermark (30s)
 - Aggregation: Durchschnitts-, Minimal-, Maximaltemperatur, Event-Zählung
@@ -34,17 +34,17 @@ Parsing (generische measurements-Map → benannte Spalten)
 Alle drei Writer schreiben direkt in den `machine_type`-Ordner ihrer Instanz statt per
 `partitionBy("machine_type")` in die Tabellenwurzel. Für Leser ist das dasselbe
 Hive-Layout; für die Schreiber bedeutet es getrennte `_temporary`-Staging-Verzeichnisse und
-kein gemeinsames `_spark_metadata`-Log — der Grund steht im Haupt-README §12.
+kein gemeinsames `_spark_metadata`-Log, der Grund steht im Haupt-README §6.
 
 Die drei Ausgaben laufen als unabhängige `writeStream`-Queries aus demselben Quell-DataFrame,
-jede mit eigenem Checkpoint-Pfad (`checkpoint_dir/<name>-<machine_types_suffix>`) — damit die
+jede mit eigenem Checkpoint-Pfad (`checkpoint_dir/<name>-<machine_types_suffix>`), damit die
 drei parallelen Instanzen (`stream-processing-a/b/c`, siehe unten) sich nicht gegenseitig den
 Zustand überschreiben.
 
 ## Horizontale Skalierung
 
 Statt eines einzelnen Pods mit `.master("local[N]")`, der das gesamte Topic verarbeitet, laufen
-drei Instanzen parallel — je eine pro Maschinentyp:
+drei Instanzen parallel, je eine pro Maschinentyp:
 
 | Instanz | `MACHINE_TYPES` | Checkpoint-Suffix |
 |---|---|---|
@@ -54,7 +54,7 @@ drei Instanzen parallel — je eine pro Maschinentyp:
 
 **Warum nicht einfach `replicas: 3`.** Mehrere Replicas desselben Deployments würden dasselbe
 Kafka-Topic vom selben Offset lesen und dieselben Aggregate mehrfach schreiben. Die
-Aufteilung erfolgt stattdessen über `MACHINE_TYPES` als Filter — jede Instanz verarbeitet nur
+Aufteilung erfolgt stattdessen über `MACHINE_TYPES` als Filter, jede Instanz verarbeitet nur
 ihren eigenen Maschinentyp, konfiguriert über den Helm-`range` in
 [`charts/mes-pipeline/templates/stream-processing.yaml`](../charts/mes-pipeline/templates/stream-processing.yaml).
 
@@ -78,7 +78,7 @@ Die drei Queries im Überblick:
 
 | Query | Output-Mode | Watermark | Warum so |
 |---|---|---|---|
-| Bronze | `append` via `foreachBatch` (Checkpoint `machine-events-v2-<instanz>`) | keine | jedes Ereignis soll ankommen, auch ein sehr spätes — Bronze ist das Archiv; `foreachBatch` statt nativem File-Sink, damit kein `_spark_metadata`-Log zwischen den Instanzen geteilt wird |
+| Bronze | `append` via `foreachBatch` (Checkpoint `machine-events-v2-<instanz>`) | keine | jedes Ereignis soll ankommen, auch ein sehr spätes, Bronze ist das Archiv; `foreachBatch` statt nativem File-Sink, damit kein `_spark_metadata`-Log zwischen den Instanzen geteilt wird |
 | Silver-Metrics | `append` via `foreachBatch` | 30 s | Fenster werden erst nach Ablauf der Watermark einmalig ausgegeben; `foreachBatch` erlaubt den direkten Schreibpfad je Instanz |
 | Silver-Status | `complete` via `foreachBatch`, `overwrite` des eigenen `machine_type`-Ordners | keine | der Zustand „letzter Status je Maschine" ist klein (eine Zeile je Maschine) und soll immer vollständig vorliegen |
 
@@ -99,7 +99,7 @@ Haupt-README §6.
 
 Die Spark-/Hadoop-Pakete (`spark-sql-kafka-0-10`, `hadoop-aws`, AWS-SDK-Bundle, insgesamt
 ~700 MB) werden beim Image-Build vorab aufgelöst und im Image gecacht (`Dockerfile`), statt sie
-bei jedem Container-Start erneut über `--packages` von Maven Central zu laden — das vermeidet
+bei jedem Container-Start erneut über `--packages` von Maven Central zu laden, das vermeidet
 wiederholtes Rate-Limiting bei häufigen Neustarts (z. B. durch die alle 10 Minuten laufende
 Bronze-Kompaktierung). Der Paket-Download-Layer steht im Dockerfile bewusst **vor** dem `COPY`
 des Anwendungscodes, damit reine Code-Änderungen diesen großen Layer nicht neu bauen.
@@ -120,5 +120,5 @@ spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0,org.apa
 
 Voraussetzung: Kafka läuft lokal erreichbar unter `localhost:9092` mit Topic `machine-events`,
 und die Ingestion (`../ingestion/main.py`) speist Events ein. Für Windows kann zusätzlich
-`winutils.exe`/`hadoop.dll`/`HADOOP_HOME` nötig sein — nur für die lokale Entwicklungsumgebung,
+`winutils.exe`/`hadoop.dll`/`HADOOP_HOME` nötig sein, nur für die lokale Entwicklungsumgebung,
 nicht im Repository enthalten.

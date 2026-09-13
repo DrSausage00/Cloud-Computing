@@ -31,12 +31,12 @@ Ingestion (a/b/c) -> Kafka topic machine-events -> Stream Processing (a/b/c) -> 
 }
 ```
 
-Alle Felder unter `measurements` sind optional — jeder Maschinentyp liefert nur einen Teil:
+Alle Felder unter `measurements` sind optional, jeder Maschinentyp liefert nur einen Teil:
 
 | Typ | Felder in `measurements` | Statuswerte |
 |---|---|---|
 | A | `status`, `temperature`, `pressure`, `rotation_speed`, `power_consumption`, `runtime_seconds` | `OFF`, `STARTING`, `RUNNING`, `COOLING`, `ERROR` |
-| B | `temperature`, `vibration` | — |
+| B | `temperature`, `vibration` | keine |
 | C | `temperature`, `status` | `RUNNING`, `PAUSED` |
 
 Neue Messfelder dürfen ohne Absprache in `measurements` ergänzt werden (Bronze übernimmt sie
@@ -59,7 +59,7 @@ automatisch). Umbenennungen bestehender Felder brauchen eine Änderung in
 | Vertrag | Wert |
 |---|---|
 | Endpoint | `http://minio:9000` (Konsole `:9001`) |
-| Buckets | `mes-data` (fachlich), `spark-checkpoints` (Checkpoints) — beide per Helm-Hook-Job angelegt |
+| Buckets | `mes-data` (fachlich), `spark-checkpoints` (Checkpoints), beide per Helm-Hook-Job angelegt |
 | Bronze | `mes-data/bronze/machine-events/machine_type=<X>/event_date=<D>/`, Parquet, append; Schreibpfad je Instanz ist `…/machine_type=<X>/` |
 | Silver-Metrics | `mes-data/silver/machine-metrics/machine_type=<X>/event_date=<D>/`, Parquet, append; Schreibpfad je Instanz ist `…/machine_type=<X>/` |
 | Silver-Status | `mes-data/silver/machine-status/machine_type=<X>/`, Parquet, overwrite des eigenen Ordners |

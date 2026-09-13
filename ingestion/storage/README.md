@@ -30,7 +30,7 @@ spark-checkpoints/
 Bronze enthält die normalisierten Maschinen-Ereignisse aus dem Kafka-Topic `machine-events`.
 Die ursprünglichen Quellformate (flaches JSON bei A, JSON mit abweichenden Feldnamen bei B,
 Pipe-separiert bei C) sind bereits von der Ingestion normalisiert, bevor sie nach Kafka
-geschrieben werden — Bronze enthält also die kanonischen Kafka-Events, nicht die ursprünglichen
+geschrieben werden, Bronze enthält also die kanonischen Kafka-Events, nicht die ursprünglichen
 Rohstrings. Die generische `measurements`-Map bleibt in Bronze vollständig erhalten, zusätzlich
 zu den extrahierten Spalten `temperature`, `pressure`, `vibration`, `status`.
 
@@ -41,7 +41,7 @@ zu den extrahierten Spalten `temperature`, `pressure`, `vibration`, `status`.
   File-Sinks liegt unverändert unter `bronze/machine-events-legacy/`
 
 Bronze ist bewusst eine **zusätzliche, dauerhafte Ablage über die 7 Tage Kafka-Retention
-hinaus** (siehe Haupt-README §3/§12) — nicht redundant zu Kafka, sondern die Antwort auf die
+hinaus** (siehe Haupt-README §3), nicht redundant zu Kafka, sondern die Antwort auf die
 dort benannte Lücke, dass die Rohhistorie nach 7 Tagen sonst unwiederbringlich weg wäre.
 
 ## Silver-Schicht
@@ -61,14 +61,14 @@ Fenster-Aggregationen, zustandsbehaftete Information (letzter Status) und Grenzw
 
 Die Spaltendefinition aller drei Tabellen (Silver-Metrics, Silver-Status, Bronze) steht im
 Haupt-README §6; [`schema.sql`](schema.sql) hält dieselben Tabellen in DDL-Notation als
-lesbare Referenz fest — es gibt keinen Metastore, der diese DDL ausführt, das Schema liegt in
+lesbare Referenz fest, es gibt keinen Metastore, der diese DDL ausführt, das Schema liegt in
 den Parquet-Dateien selbst.
 
 ## Tabellenformat
 
 **Parquet**, kein Delta Lake/Iceberg. Die physischen Dateien sind spaltenorientiertes,
 komprimiertes Parquet mit eingebettetem Schema. Ohne Table-Format-Schicht gibt es dafür keine
-ACID-Transaktionen und kein Time Travel — eine bewusste, im Haupt-README §12 benannte Lücke,
+ACID-Transaktionen und kein Time Travel, eine bewusste, im Haupt-README §12 benannte Lücke,
 kein technisches Versehen.
 
 ## Partitionierungsentscheidung
@@ -82,8 +82,8 @@ zusätzlich nach `event_date`). Zwei unabhängige Gründe:
 2. **Parallele Schreiber.** Drei Stream-Processing-Instanzen (siehe Haupt-README §8) schreiben
    gleichzeitig, je eine pro Maschinentyp. Jede Instanz nutzt ihren `machine_type=<X>`-Ordner
    direkt als Schreibpfad. Dadurch ersetzt `mode("overwrite")` beim Status nur den eigenen
-   Ordner, und die Staging-Verzeichnisse (`_temporary`) der Instanzen liegen getrennt —
-   die Race Conditions aus Haupt-README §12 sind damit ausgeschlossen.
+   Ordner, und die Staging-Verzeichnisse (`_temporary`) der Instanzen liegen getrennt,
+   die Schreibkonflikte aus Haupt-README §6 sind damit ausgeschlossen.
 
 Bewusst **nicht** nach `machine_id` partitioniert: Bei potenziell vielen Maschinen entstünde
 eine sehr große Zahl kleiner Partitionen. `machine_type` hat nur drei Ausprägungen im Prototyp
@@ -94,7 +94,6 @@ und deckt trotzdem den Konflikt zwischen den parallelen Schreibern vollständig 
 Jeder Streaming-Micro-Batch erzeugt eine neue Datei. Über mehrere Stunden Laufzeit entstehen so
 pro Partition schnell Zehntausende kleiner Dateien (beobachtet: über 70.000 Objekte in Bronze
 nach rund einem Tag), was Lesezugriffe spürbar verlangsamt. Zwei periodische `CronJob`s lesen
-die aktuelle Partition komplett neu ein und schreiben sie als eine einzige, große Datei zurück
-— Details, Zeitplan und zwei dabei aufgetretene, nicht-triviale Fehlerbilder (Sparks
+die aktuelle Partition komplett neu ein und schreiben sie als eine einzige, große Datei zurück. Details, Zeitplan und zwei dabei aufgetretene, nicht-triviale Fehlerbilder (Sparks
 `_spark_metadata`-Log bei Bronze, S3-Commit-Races bei parallelem Schreiben) stehen im
 Haupt-README §6.

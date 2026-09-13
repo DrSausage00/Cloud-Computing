@@ -1,6 +1,6 @@
 # MES Serving-API
 
-Schlanke FastAPI-Anwendung, die die Silver-Schicht aus MinIO (Parquet, geschrieben vom Spark-Streaming-Job) einliest und über HTTP genau die Endpunkte bereitstellt, die die UI benötigt. Keine zusätzliche Business-Logik — die API liest und aggregiert nur beim Anfragezeitpunkt.
+Schlanke FastAPI-Anwendung, die die Silver-Schicht aus MinIO (Parquet, geschrieben vom Spark-Streaming-Job) einliest und über HTTP genau die Endpunkte bereitstellt, die die UI benötigt. Keine zusätzliche Business-Logik, die API liest und aggregiert nur beim Anfragezeitpunkt.
 
 Einordnung in die Gesamtarchitektur: siehe Haupt-README.
 
@@ -146,10 +146,10 @@ Dort lassen sich alle Endpunkte direkt im Browser aufrufen, ohne curl oder Postm
 ## 9. Caching
 
 `load_table()` liest nicht bei jeder Anfrage neu aus MinIO, sondern hält das Ergebnis für
-`S3_CACHE_TTL_SECONDS` Sekunden vor — sonst würde jede Readiness-Probe (alle paar Sekunden) einen
+`S3_CACHE_TTL_SECONDS` Sekunden vor, sonst würde jede Readiness-Probe (alle paar Sekunden) einen
 vollen Table-Scan auslösen. Der Cache ist pro `event_date`-Filterwert getrennt, weil
 `/metrics/latest` und `/metrics/history` unterschiedliche Zeitfenster anfragen.
 
-**Ehrliche Grenze:** Ohne `REDIS_HOST` ist der Cache pro Pod getrennt — bei mehreren
+**Ehrliche Grenze:** Ohne `REDIS_HOST` ist der Cache pro Pod getrennt, bei mehreren
 Serving-API-Pods (HPA) fragt jeder Pod unabhängig bei MinIO nach. Ein geteilter Redis-Cache
 ist vorbereitet, aber noch nicht deployt (siehe Haupt-README §12).
