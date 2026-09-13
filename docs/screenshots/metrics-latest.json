@@ -1,0 +1,41 @@
+[
+  {
+    "machine_id": "A-001",
+    "machine_type": "A",
+    "window_start": "2026-09-13T12:28:10+00:00",
+    "window_end": "2026-09-13T12:28:20+00:00",
+    "avg_temperature": 50.24579999999999,
+    "min_temperature": 49.88,
+    "max_temperature": 50.6,
+    "event_count": 50,
+    "last_status": "RUNNING",
+    "temperature_limit": 85.0,
+    "limit_exceeded": false
+  },
+  {
+    "machine_id": "B-001",
+    "machine_type": "B",
+    "window_start": "2026-09-13T12:28:10+00:00",
+    "window_end": "2026-09-13T12:28:20+00:00",
+    "avg_temperature": 79.93400000000001,
+    "min_temperature": 79.72,
+    "max_temperature": 80.0,
+    "event_count": 25,
+    "last_status": null,
+    "temperature_limit": 85.0,
+    "limit_exceeded": false
+  },
+  {
+    "machine_id": "C-001",
+    "machine_type": "C",
+    "window_start": "2026-09-13T12:28:10+00:00",
+    "window_end": "2026-09-13T12:28:20+00:00",
+    "avg_temperature": 82.68599999999999,
+    "min_temperature": 82.58,
+    "max_temperature": 82.79,
+    "event_count": 15,
+    "last_status": "RUNNING",
+    "temperature_limit": 85.0,
+    "limit_exceeded": false
+  }
+]

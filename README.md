@@ -876,23 +876,30 @@ Ein normalisiertes Ereignis, wie es im Topic `machine-events` liegt (Typ A, nach
 }
 ```
 
-Eine Silver-Zeile, wie sie die Serving-API unter `GET /metrics/latest` ausliefert:
+Eine Silver-Zeile, wie sie die Serving-API unter `GET /metrics/latest` ausliefert (Auszug aus
+der vollständigen Antwort in
+[`docs/screenshots/metrics-latest.json`](docs/screenshots/metrics-latest.json), aufgenommen am
+13.09.2026 gegen den DHBW-Cluster):
 
 ```json
 {
   "machine_id": "A-001",
   "machine_type": "A",
-  "window_start": "2026-09-12T09:14:00+00:00",
-  "window_end": "2026-09-12T09:14:10+00:00",
-  "avg_temperature": 84.31,
-  "min_temperature": 84.05,
-  "max_temperature": 85.62,
+  "window_start": "2026-09-13T12:28:10+00:00",
+  "window_end": "2026-09-13T12:28:20+00:00",
+  "avg_temperature": 50.24579999999999,
+  "min_temperature": 49.88,
+  "max_temperature": 50.6,
   "event_count": 50,
   "last_status": "RUNNING",
   "temperature_limit": 85.0,
-  "limit_exceeded": true
+  "limit_exceeded": false
 }
 ```
+
+Eine Zeitreihe derselben Form liefert `GET /metrics/history`; die Antwort für C-001 über fünf
+Minuten (30 Fenster à 10 s) liegt in
+[`docs/screenshots/metrics-history-C-001.json`](docs/screenshots/metrics-history-C-001.json).
 
 ### Screenshots
 
@@ -918,7 +925,9 @@ beiden Komponenten, die nicht über eine HPA laufen (§8).*
 ![UI Übersicht](docs/screenshots/04-ui-overview.png)
 *Maschinenübersicht mit einer Kachel je Maschine: Ampel, Ø/Min/Max-Temperatur und Event-Zahl
 des jeweils letzten 10-s-Fensters aus der Silver-Schicht, alle 5 s per Polling aktualisiert.
-Alle drei Rohformate kommen als Kacheln an.*
+Alle drei Rohformate kommen als Kacheln an. A-001 steht außerhalb der Betriebszeit auf
+`OFF` (Streaming-State `last_status`), C-001 liegt mit 85,1 °C über dem Grenzwert
+(`limit_exceeded` aus der ConfigMap-Anreicherung), B-001 läuft im Sollbereich.*
 
 ![UI Detailansicht mit Grenzwertüberschreitung](docs/screenshots/05-ui-detail-limit-exceeded.png)
 *Detailansicht von C-001: Kennzahlen des letzten Fensters und der Temperaturverlauf der letzten
