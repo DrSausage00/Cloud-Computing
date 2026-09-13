@@ -34,16 +34,30 @@ def health():
 # --------------------------------------------------------------------
 # Ampel
 # --------------------------------------------------------------------
+OPERATING_STATE = {
+    "RUNNING": "laeuft",
+    "STARTING": "laeuft",
+    "COOLING": "laeuft",
+    "OFF": "steht",
+    "PAUSED": "steht",
+    "STOPPED": "steht",
+    "ERROR": "fehler",
+}
+
 
 def traffic_light(row: dict) -> tuple[str, str]:
     """Ampelstufe und Klartext zu einer Maschine.
 
-    rot   = Maschine steht oder meldet einen Fehler
-    gelb  = laeuft, aber ueber dem Temperaturgrenzwert
-    gruen = laeuft im Sollbereich
+    rot   = Fehlerzustand
+    gelb  = Maschine steht, oder laeuft ueber dem Temperaturgrenzwert
+    gruen = laeuft im Sollbereich (auch ohne Statussignal, z. B. Typ B)
     """
-    if row["last_status"] in ("OFF", "PAUSED"):
-        return "warn", f"Steht ({row['last_status']})"
+    raw = row["last_status"]
+    state = OPERATING_STATE.get(raw, "laeuft")
+    if state == "fehler":
+        return "alarm", f"Status {raw}"
+    if state == "steht":
+        return "warn", f"Steht ({raw})"
     if row["limit_exceeded"]:
         return "warn", "Grenzwert überschritten"
     return "ok", "Läuft im Sollbereich"
