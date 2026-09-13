@@ -20,7 +20,7 @@ mes-data/
 
 spark-checkpoints/
 └── checkpoints/
-    ├── machine-events-<a|b|c>/  # Bronze-Checkpoint je Stream-Processing-Instanz
+    ├── machine-events-v2-<a|b|c>/ # Bronze-Checkpoint je Stream-Processing-Instanz (v2 seit dem Umstieg auf foreachBatch)
     ├── machine-metrics-<a|b|c>/ # Silver-Metrics-Checkpoint je Instanz
     └── machine-status-<a|b|c>/  # Silver-Status-Checkpoint je Instanz
 ```

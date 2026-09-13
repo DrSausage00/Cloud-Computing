@@ -17,7 +17,7 @@ spec:
           containers:
             - name: compact
               image: {{ include "mes.image" (dict "ctx" . "image" .Values.streamProcessing.image "tag" .Values.streamProcessing.tag) | quote }}
-              imagePullPolicy: Always
+              imagePullPolicy: {{ .Values.global.imagePullPolicy }}
               resources:
                 requests:
                   cpu: 500m

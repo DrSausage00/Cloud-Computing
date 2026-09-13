@@ -52,7 +52,7 @@ Schnittstellen zwischen den Komponenten: siehe [docs/interface-contracts.md](doc
 ## 1. Use Case und Motivation
 
 Eine Fertigung betreibt Maschinen unterschiedlicher Generationen und Hersteller. Jede meldet
-Betriebsdaten, Temperatur, Druck, Vibration, Status , aber jede in ihrem **eigenen Rohformat**,
+Betriebsdaten, Temperatur, Druck, Vibration, Status, aber jede in ihrem **eigenen Rohformat**,
 so wie es in gewachsenen Werkslandschaften tatsächlich ist. Ein *Manufacturing Execution System*
 (MES) führt diese Ströme zusammen und überwacht sie nahezu in Echtzeit: Läuft jede Maschine?
 Überschreitet eine die Temperaturgrenze? Wie sah der Verlauf der letzten Stunde aus?
@@ -125,7 +125,8 @@ unter einer Minute nach dem Ereignis zeigen. Das Latenzbudget setzt sich zusamme
 
 Die Ingest-Rate von 9 Events/s liegt weit unter dem, was ein einzelner Kafka-Broker verkraftet.
 Die Architektur ist auf die hochgerechnete Rate von 500 Events/s und mehr ausgelegt, weil die
-Skalierungsachse (Kafka-Partitionen, je eine Stream-Processing-Instanz pro Partition, siehe §8)
+Skalierungsachse (je eine Ingestion- und Stream-Processing-Instanz pro Maschinentyp, mit der
+Kafka-Partitionszahl als nächster Ausbaustufe, siehe §8)
 davon unabhängig ist.
 
 ### Variety
@@ -164,7 +165,7 @@ Streaming als Standardfall. Kein separater Batch-Zweig.
 
 ![Architekturdiagramm](docs/architecture.svg)
 
-*Jede Box ist ein Workload im Helm-Chart, jeder Pfeil ein tatsächlicher Datenfluss. Die
+*Jede farbige Box ist ein Workload im Helm-Chart (die weißen Kästen in MinIO sind Tabellen), jeder Pfeil ein tatsächlicher Datenfluss. Die
 Komponenten im Einzelnen und ihre Technologiewahl: §4. Abbildung auf Kubernetes-Workloads: §8.*
 
 **Warum nicht Lambda.** Lambda führt zwei Pfade parallel, einen für Echtzeit und einen für
@@ -275,17 +276,17 @@ Alles davon steht in einer Datei, [`stream-processing/streaming_job.py`](stream-
 1. **Parsen.** Die Kafka-Nachricht wird per `from_json` gegen das Envelope-Schema gelesen; die
    generische `measurements`-Map wird in benannte Spalten (`temperature`, `pressure`,
    `vibration`, `status`) aufgelöst, fehlende Schlüssel werden `null`
-   ([Zeile 82–94](stream-processing/streaming_job.py#L82-L94)).
+   ([Zeile 83–95](stream-processing/streaming_job.py#L83-L95)).
 2. **Filtern.** `machine_type IN MACHINE_TYPES`, jede Instanz behält nur ihren Typ
-   ([Zeile 96](stream-processing/streaming_job.py#L96)). Das ist die Grundlage der horizontalen
+   ([Zeile 97](stream-processing/streaming_job.py#L97)). Das ist die Grundlage der horizontalen
    Skalierung in §8.
 3. **Drei Queries aus demselben Quell-DataFrame:**
 
 | Query | Transformation | Output-Mode | Ziel |
 |---|---|---|---|
 | Bronze | nur `event_date` ergänzen, **keine** Watermark | `append` über `foreachBatch` | `bronze/machine-events/machine_type=<X>/`, partitioniert nach `event_date` |
-| Silver-Metrics | `withWatermark(30 s)` → `window(10 s)` × `machine_id` → `avg/min/max(temperature)`, `count(*)`, `max_by(status, timestamp)` → `limit_exceeded = max_temperature > TEMP_LIMIT` ([Zeile 111–137](stream-processing/streaming_job.py#L111-L137)) | `append` über `foreachBatch`, Trigger alle 10 s | `silver/machine-metrics/machine_type=<X>/`, partitioniert nach `event_date` |
-| Silver-Status | `groupBy(machine_id)` → `max_by(status, timestamp)` als `last_status` ([Zeile 102–108](stream-processing/streaming_job.py#L102-L108)) | `complete` über `foreachBatch`, `overwrite` des eigenen `machine_type`-Ordners | `silver/machine-status/machine_type=<X>/` |
+| Silver-Metrics | `withWatermark(30 s)` → `window(10 s)` × `machine_id` → `avg/min/max(temperature)`, `count(*)`, `max_by(status, timestamp)` → `limit_exceeded = max_temperature > TEMP_LIMIT` ([Zeile 112–137](stream-processing/streaming_job.py#L112-L137)) | `append` über `foreachBatch`, Trigger alle 10 s | `silver/machine-metrics/machine_type=<X>/`, partitioniert nach `event_date` |
+| Silver-Status | `groupBy(machine_id)` → `max_by(status, timestamp)` als `last_status` ([Zeile 104–109](stream-processing/streaming_job.py#L104-L109)) | `complete` über `foreachBatch`, `overwrite` des eigenen `machine_type`-Ordners | `silver/machine-status/machine_type=<X>/` |
 
 Alle drei Writer schreiben über `foreachBatch` **direkt in den `machine_type`-Ordner ihrer
 Instanz** statt per `partitionBy("machine_type", …)` in die Tabellenwurzel. Für Leser ist das
@@ -336,8 +337,9 @@ Solange eine einzelne Instanz alle drei Maschinentypen zugleich verarbeitete, da
 Micro-Batch teils 12–15s gegen einen 10s-Trigger, Ereignisse kamen dadurch regelmäßig „zu spät"
 relativ zur Watermark und wurden lautlos verworfen (kein Fehler, keine Log-Zeile, nur fehlende
 Zeilen in Silver). Kurzfristig auf 60s angehoben, um das abzufedern. Nach dem Aufteilen in drei
-parallele, je auf einen Maschinentyp gefilterte Instanzen (siehe §8) sank die Last pro Instanz
-auf ein Drittel, wodurch 30s als Kompromiss aus Sicherheitsmarge und UI-Aktualität reicht.
+parallele, je auf einen Maschinentyp gefilterte Instanzen (siehe §8) sank die Aggregationslast pro Instanz
+auf ein Drittel (jede Instanz liest zwar weiterhin das ganze Topic, aggregiert und schreibt
+aber nur ihren Typ), wodurch 30s als Kompromiss aus Sicherheitsmarge und UI-Aktualität reicht.
 
 ---
 
@@ -544,16 +546,17 @@ einer einzelnen Seite, damit jeder UI-Pod jede Anfrage beantworten kann):
    eigenes Statusvokabular hat (A: `OFF`, `STARTING`, `RUNNING`, `COOLING`, `ERROR`; C:
    `RUNNING`, `PAUSED`; B: keines), bildet die UI alle Rohwerte zuerst auf ein einheitliches
    Betriebszustandsmodell mit drei Zuständen ab (`laeuft`, `steht`, `fehler`; Tabelle
-   `OPERATING_STATE` in [`ui/app.py`](ui/app.py#L38)) und leitet daraus die Ampel ab: rot bei
+   `OPERATING_STATE` in [`ui/app.py`](ui/app.py#L37)) und leitet daraus die Ampel ab: rot bei
    Fehler, gelb bei „Steht" oder bei `limit_exceeded`, sonst grün. Ein neuer Maschinentyp
    braucht nur einen Eintrag in dieser Tabelle. Die Kacheln aktualisieren sich alle 5 Sekunden per
    Polling (`POLL_INTERVAL_SECONDS` aus der ConfigMap).
 2. **Detail (`/machine/<id>`).** Klick auf eine Kachel. Oben die Kennzahlen des letzten
    Fensters (Mittel/Min/Max/Grenzwert/Events/Status), darunter der Temperaturverlauf der
    letzten `HISTORY_MINUTES` (Default 15) als Linie mit Min-Max-Band und gestrichelter
-   Grenzwertlinie. Bei Zeiträumen über zwei Stunden verdichtet die API die 10-s-Fenster
-   serverseitig zu 5-Minuten-, 15-Minuten- oder Stundenmitteln, damit der Chart nicht mit
-   Zehntausenden Punkten kämpft.
+   Grenzwertlinie. Für Zeiträume über zwei Stunden (Parameter `minutes` der API; die deployte
+   UI fragt fest 15 Minuten an) verdichtet die API die 10-s-Fenster serverseitig zu
+   5-Minuten-, 15-Minuten- oder Stundenmitteln, damit ein Chart nicht mit Zehntausenden
+   Punkten kämpft.
 3. **Messwerte (`/messwerte`).** Alle Fenster aller Maschinen der letzten `HISTORY_MINUTES`
    als sortier- und filterbare Tabelle, Zeilen mit `limit_exceeded` rot hinterlegt.
 
@@ -578,14 +581,14 @@ Alles läuft im Namespace `mes` aus einem einzigen Helm-Chart
 | Kompaktierung | **2 CronJobs** `silver-compaction` (\*/30), `bronze-compaction` (\*/10), `concurrencyPolicy: Forbid` | kurze, periodische Batch-Arbeit; ein Dauer-Pod würde Ressourcen binden und hätte keine Lauf-Historie | keiner | keine | keine |
 | Serving-API | **Deployment** `serving-api` + **HPA** | zustandslos (Cache pro Pod ist nur Beschleunigung) | ClusterIP `serving-api:8000` | keine | `/health` (liveness, startup), `/ready` (prüft MinIO-Lesbarkeit) |
 | UI | **Deployment** `ui`, 2 Replicas | zustandslos, Zustand steckt in der URL | NodePort 30080 (minikube) bzw. ClusterIP + Ingress mit TLS (DHBW) | keine | `/health` |
-| Bucket-Anlage | **Job** `create-buckets` als Helm-Hook (`post-install,post-upgrade`) | einmalige Initialisierung, kein Dauerbetrieb | keine |, | keine |
+| Bucket-Anlage | **Job** `create-buckets` als Helm-Hook (`post-install,post-upgrade`) | einmalige Initialisierung, kein Dauerbetrieb | keine | keine | keine |
 
 ### Konfiguration und Secrets
 
 - **ConfigMap `pipeline-config`** ([`configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml)):
   alle nicht-geheimen Laufzeitwerte, Kafka-Bootstrap, `TEMP_LIMIT`, MinIO-Endpunkt und
-  Bucket, Tabellenpfade, S3-Timeouts, Cache-TTLs, UI-Polling. Jeder Pod bindet sie per
-  `envFrom` ein, Code liest ausschließlich Umgebungsvariablen. Eine Annotation
+  Bucket, Tabellenpfade, S3-Timeouts, Cache-TTLs, UI-Polling. Jeder Anwendungs-Pod (Ingestion,
+  Stream Processing, Kompaktierung, Serving-API, UI) bindet sie per `envFrom` ein, Code liest ausschließlich Umgebungsvariablen. Eine Annotation
   `checksum/config` im Pod-Template sorgt dafür, dass eine ConfigMap-Änderung per
   `helm upgrade` automatisch einen Rollout auslöst, sonst würde ein geänderter `TEMP_LIMIT`
   erst beim nächsten zufälligen Pod-Neustart wirken.
@@ -608,10 +611,10 @@ allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
 | Komponente | Zustand | Mechanismus | Skalierungseinheit | Nachweis |
 |---|---|---|---|---|
 | Ingestion | zustandslos | **3 separate Deployments** (`ingestion-a/b/c`), je `MACHINE_TYPES` gefiltert | Maschinentyp | `kubectl get pods -l mes.family=ingestion` |
-| Stream Processing | Checkpoint in MinIO | **3 separate Deployments** (`stream-processing-a/b/c`), je `MACHINE_TYPES` gefiltert, isolierte Checkpoints | Maschinentyp / Kafka-Partition | `kubectl get pods -l mes.family=stream-processing` |
+| Stream Processing | Checkpoint in MinIO | **3 separate Deployments** (`stream-processing-a/b/c`), je `MACHINE_TYPES` gefiltert, isolierte Checkpoints | Maschinentyp | `kubectl get pods -l mes.family=stream-processing` |
 | Serving-API | zustandslos | **HPA** auf CPU (1–5 Pods, Ziel 50 %) | HTTP-Request | `kubectl get hpa -w` |
 | UI | zustandslos | Deployment-Replicas | HTTP-Request | `kubectl scale` |
-| Kafka | StatefulSet + PVC | **3 KRaft-Broker** | Partition | `kafka-topics --describe`: die drei Partitionen liegen auf verschiedenen Brokern (Leader-Zuweisung durch Kafka beim Auto-Create, im Screenshot Broker 1 und 2) |
+| Kafka | StatefulSet + PVC | **3 KRaft-Broker** | Partition | `kafka-topics --describe`: drei Partitionen, Leader-Zuweisung durch Kafka beim Auto-Create (im Screenshot Broker 1 und 2, Broker 0 ohne Partition) |
 | MinIO | StatefulSet + PVC | **4-Node Distributed Mode**, Erasure Coding | Knoten | `mc admin info`: vier Knoten online, EC:2 |
 
 **Warum Ingestion und Stream Processing nicht über `replicas: N` skalieren.** Beide Komponenten
@@ -626,15 +629,19 @@ Liste von Instanzen in `values.yaml`, jede mit eigenem `MACHINE_TYPES`-Filter, e
 und, bei Stream Processing zusätzlich, eigenem Spark-Checkpoint-Pfad, damit sich die drei
 Instanzen nicht gegenseitig den Zustand überschreiben.
 
-**Eine bewusste Grenze:** Mehr Ingestion-/Stream-Processing-Instanzen als Kafka-Partitionen
-bringen nichts. Drei Partitionen heißen: sinnvolle Parallelität endet bei drei Instanzen. Wer
+**Eine bewusste Grenze:** Die Aufteilung folgt den Maschinentypen. Jede
+Stream-Processing-Instanz abonniert das gesamte Topic (`subscribe`) und filtert auf ihren
+Typ; geteilt wird damit die Aggregations- und Schreiblast, nicht das Lesen und Parsen aus
+Kafka. Mehr Instanzen als Maschinentypen bringen nichts. Die nächste Ausbaustufe wäre ein
+Split entlang der Kafka-Partitionen (`assign` statt `subscribe`, §12), der auch die Leselast
+teilt; dort gilt dann die Kafka-eigene Obergrenze, nicht mehr Instanzen als Partitionen. Wer
 weiter skalieren will, erhöht zuerst die Partitionszahl (`KAFKA_NUM_PARTITIONS` in
 [`kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml#L82)) und ergänzt dann die
 Instanzlisten in `values.yaml`, ohne Änderung an Code oder Templates.
 
-**Was Kafka und MinIO an Skalierung leisten, und was nicht.** Drei Broker verteilen die drei
-Partitionen (ein Leader je Broker), der Schreib- und Lesedurchsatz teilt sich also auf drei
-Pods und drei Platten. Der Replication-Factor der Topics ist im Prototyp aber 1: Fällt ein
+**Was Kafka und MinIO an Skalierung leisten, und was nicht.** Kafka verteilt die
+Partitions-Leader über die Broker (im Prototyp zwei auf Broker 2, eine auf Broker 1), der
+Schreib- und Lesedurchsatz teilt sich damit auf mehrere Pods und Platten. Der Replication-Factor der Topics ist im Prototyp aber 1: Fällt ein
 Broker aus, ist seine Partition bis zur Rückkehr nicht verfügbar. Das ist eine bewusste
 Entscheidung für den Prototyp (Ausfallsicherheit war nicht gefordert, RF 3 hätte den Disk-I/O
 verdreifacht, siehe unten) und in §12 benannt. MinIO hingegen ist mit vier Knoten und Erasure
@@ -694,6 +701,16 @@ kubectl get pods -n mes                       # alles Running, CronJob-Pods Comp
 minikube service ui -n mes                    # öffnet die UI (NodePort 30080)
 ```
 
+Mit `--wait` kehrt Helm erst zurück, wenn die Serving-API bereit ist. Deren Readiness-Probe
+liest `silver/machine-status`, und diese Tabelle entsteht erst mit dem ersten Spark-Batch,
+zwei bis drei Minuten nach dem Start von Kafka und Stream Processing. `--timeout 10m` deckt
+das ab; solange zeigt `kubectl get pods` die Serving-API mit `0/1 Running`, das ist erwartet.
+
+Mit `--wait` kehrt Helm erst zurück, wenn die Serving-API bereit ist. Deren Readiness-Probe
+liest `silver/machine-status`, und diese Tabelle entsteht erst mit dem ersten Spark-Batch,
+zwei bis drei Minuten nach dem Start von Kafka und Stream Processing. `--timeout 10m` deckt
+das ab; solange zeigt `kubectl get pods` die Serving-API mit `0/1 Running`, das ist erwartet.
+
 ### Weg B: DHBW Cloud
 
 ```bash
@@ -725,7 +742,7 @@ terraform apply
 Erzeugt drei VMs im Netz `DHBWV6`, einen Master (`general.medium`, 4 vCPU / 16 GB) und zwei
 Worker (`general.small`, 2 vCPU / 8 GB, macht 8 vCPU insgesamt), und schreibt aus deren
 IPv6-Adressen unmittelbar das Ansible-Inventar `terraform/generated-inventory.yml`
-([`main.tf`](terraform/main.tf#L37)). Das ist der Kern des Infrastructure-as-Code-Gedankens:
+([`main.tf`](terraform/main.tf#L38)). Das ist der Kern des Infrastructure-as-Code-Gedankens:
 **Die Ausgabe des einen Werkzeugs ist die Eingabe des nächsten**, es wird keine Adresse von Hand
 übertragen.
 
@@ -737,7 +754,7 @@ Sechs Anpassungen gegenüber der Vorlage aus dem Übungs-Track waren nötig:
 | Netz | `DHBW-1-Upper` | `DHBWV6` | in der neuen Cloud umbenannt |
 | Image | feste `image_id` | Auflösung über den Namen | die IDs der Vorlage existieren nicht mehr; die DHBW ersetzt Images regelmäßig |
 | Flavor | `m1.extra_large` (8 vCPU) für alle Knoten | `general.medium`/`general.small` | 3 × 8 vCPU je Gruppe erschöpften das gemeinsame Projektkontingent (100 vCPU für den ganzen Kurs) |
-| Adressen | `fixed_ip_v4` | `fixed_ip_v6`, `ip_family: ipv6` | die privaten IPv4 sind von außen nicht erreichbar |
+| Adressen | `fixed_ip_v4` | `fixed_ip_v6`, `ip_family: dual` | die privaten IPv4 sind von außen nicht erreichbar |
 | Kontingent nachträglich anpassen | keine | `terraform apply -replace=<resource>` | OpenStack erlaubt Resize nur nach oben; Disk-Verkleinerung braucht einen Neubau |
 
 **3. Kubernetes.** k3s wird nicht manuell installiert, sondern über die offizielle, öffentlich
@@ -849,12 +866,12 @@ gemacht", sondern was daran eine Entscheidung oder ein Verständnis zeigt.
 
 | Datei | Warum wesentlich |
 |---|---|
-| [`streaming_job.py` Zeile 96](stream-processing/streaming_job.py#L96) | Maschinentyp-Filter: die eine Zeile, die aus einem Pod drei parallele Instanzen macht |
-| [`streaming_job.py` Zeile 111–123](stream-processing/streaming_job.py#L111-L123) | Watermark 30 s, 10-s-Tumbling-Window, `avg/min/max/count` und `max_by(status)`, die nicht-triviale Transformation |
-| [`streaming_job.py` Zeile 100–108, 153–158, 191–196](stream-processing/streaming_job.py#L100-L108) | zustandsbehaftete Status-Query im `complete`-Modus mit `overwrite` je `machine_type`-Partition |
+| [`streaming_job.py` Zeile 97](stream-processing/streaming_job.py#L97) | Maschinentyp-Filter: die eine Zeile, die aus einem Pod drei parallele Instanzen macht |
+| [`streaming_job.py` Zeile 112–124](stream-processing/streaming_job.py#L112-L124) | Watermark 30 s, 10-s-Tumbling-Window, `avg/min/max/count` und `max_by(status)`, die nicht-triviale Transformation |
+| [`streaming_job.py` Zeile 104–109, 157–165, 216–221](stream-processing/streaming_job.py#L104-L109) | zustandsbehaftete Status-Query im `complete`-Modus mit `overwrite` je `machine_type`-Partition |
 | [`streaming_job.py` Zeile 134–137](stream-processing/streaming_job.py#L134-L137) | Anreicherung: `TEMP_LIMIT` aus der ConfigMap wird zur Spalte `temperature_limit` plus Flag `limit_exceeded` |
-| [`streaming_job.py` Zeile 142–150](stream-processing/streaming_job.py#L142-L150) | Checkpoint-Pfade mit Instanz-Suffix, damit sich `a/b/c` nicht gegenseitig den Zustand überschreiben |
-| [`stream-processing/compact.py`](stream-processing/compact.py#L29-L69) | periodische Kompaktierung gegen das Small-Files-Problem: `.cache()` gegen doppelte Reads, direkter Partitionsordner-Zugriff bei Bronze, Retry gegen S3-Commit-Races |
+| [`streaming_job.py` Zeile 143–151](stream-processing/streaming_job.py#L143-L151) | Checkpoint-Pfade mit Instanz-Suffix, damit sich `a/b/c` nicht gegenseitig den Zustand überschreiben |
+| [`stream-processing/compact.py`](stream-processing/compact.py#L29-L69) | periodische Kompaktierung gegen das Small-Files-Problem: `.cache()` gegen doppelte Reads, Partitionsfilter über die Tabellenwurzel mit dynamischem Partition-Overwrite, Retry gegen S3-Commit-Races |
 
 **Serving und UI**
 
@@ -870,7 +887,7 @@ gemacht", sondern was daran eine Entscheidung oder ein Verständnis zeigt.
 | Datei | Warum wesentlich |
 |---|---|
 | [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml#L10) | `podManagementPolicy: Parallel` + `publishNotReadyAddresses`, die beiden Bootstrapping-Deadlocks beim 3-Broker-KRaft-Umbau (Broker warten aufeinander, bevor sie Ready sind) |
-| [`charts/mes-pipeline/templates/ingestion.yaml`](charts/mes-pipeline/templates/ingestion.yaml#L1), [`stream-processing.yaml`](charts/mes-pipeline/templates/stream-processing.yaml#L51) | Helm-`range` über eine Instanzliste statt `replicas: N`, die eigentliche horizontale Skalierung |
+| [`charts/mes-pipeline/templates/ingestion.yaml`](charts/mes-pipeline/templates/ingestion.yaml#L1), [`stream-processing.yaml`](charts/mes-pipeline/templates/stream-processing.yaml#L1) | Helm-`range` über eine Instanzliste statt `replicas: N`, die eigentliche horizontale Skalierung |
 | [`charts/mes-pipeline/templates/serving-api.yaml`](charts/mes-pipeline/templates/serving-api.yaml#L74) | HPA ohne von Helm verwaltete `replicas`, kein Kampf zwischen `helm upgrade` und der Autoskalierung |
 | [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L82) | Distributed-Mode-Adressierung `minio-{0...3}` aus `replicaCount` berechnet, plus Helm-Hook-Job für die Buckets |
 | [`charts/mes-pipeline/templates/configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml), [`secret.yaml`](charts/mes-pipeline/templates/secret.yaml) | alle Laufzeitwerte und Zugangsdaten außerhalb der Images; `checksum/config`-Annotation in den Deployments löst Rollouts bei Änderungen aus |
@@ -926,8 +943,8 @@ der vollständigen Antwort in
 }
 ```
 
-Eine Zeitreihe derselben Form liefert `GET /metrics/history`; die Antwort für C-001 über fünf
-Minuten (30 Fenster à 10 s) liegt in
+Eine Zeitreihe derselben Form liefert `GET /metrics/history`; die Antwort für C-001 über drei
+Minuten (18 Fenster à 10 s) liegt in
 [`docs/screenshots/metrics-history-C-001.json`](docs/screenshots/metrics-history-C-001.json).
 
 ### Screenshots
@@ -986,13 +1003,13 @@ zurückgeschrieben (§6, Small-Files-Problem).*
 
 ![Helm-Deployment](docs/screenshots/10-helm-deploy-fresh.png)
 *Reproduzierbarkeit: der dokumentierte `helm upgrade --install`-Befehl aus §9 gegen das laufende
-Release, danach `helm history`. Revision 34 ist der in §9 beschriebene fehlgeschlagene Lauf
+Release, danach `helm history`. Revision 34 ist der in §4 beschriebene fehlgeschlagene Lauf
 (Hook-Image nicht ziehbar), Revision 35 der erfolgreiche Lauf mit dem korrigierten Chart 0.2.0
 direkt danach, der Deploy-Weg funktioniert, und Helm hält die Historie nachvollziehbar fest.*
 
 ![Ereignisse im Kafka-Topic](docs/screenshots/11-kafka-console-consumer.png)
 *Beispiel-Output der Ingestion: normalisierte Ereignisse aus dem Topic `machine-events` mit Key
-(`machine_id`) und Partition, Typ C auf Partition 2, Typ A auf Partition 0, jeweils mit der
+(`machine_id`) und Partition, Typ B auf Partition 1, Typ C auf Partition 2, jeweils mit der
 generischen `measurements`-Map und `schema_version` (§2, §4).*
 
 ---
@@ -1015,13 +1032,13 @@ greifen, dessen Verteilung wir nicht getestet haben.
 
 ### Obergrenze der Parallelität: die Kafka-Partitionen
 
-Ingestion und Stream Processing laufen mit je drei Instanzen, so viele wie das Topic
-Partitionen hat (§8). Mehr Instanzen bringen keinen Durchsatz, solange die Partitionszahl
-nicht steigt. Das ist keine Schwäche der Umsetzung, sondern die Skalierungseinheit von Kafka;
-wer weiter skalieren will, erhöht zuerst `KAFKA_NUM_PARTITIONS` und ergänzt dann die
-Instanzlisten in `values.yaml`. Die zweite Kopplung ist selbst gewählt: Die Instanzen sind
-entlang der Maschinentypen aufgeteilt, nicht entlang der Partitionen. Ein neuer Maschinentyp
-braucht deshalb einen neuen Eintrag in `values.yaml` (Ausblick Punkt 7).
+Ingestion und Stream Processing laufen mit je drei Instanzen, eine je Maschinentyp (§8).
+Jede Stream-Processing-Instanz abonniert dabei das gesamte Topic und filtert auf ihren Typ;
+geteilt wird die Aggregations- und Schreiblast, nicht das Lesen und Parsen aus Kafka. Mehr
+Instanzen als Maschinentypen bringen deshalb nichts, und ein neuer Typ braucht einen Eintrag
+in `values.yaml`. Die nächste Ausbaustufe, ein Split entlang der Kafka-Partitionen (Ausblick
+Punkt 7), teilt auch die Leselast, unterliegt dann aber der Kafka-eigenen Obergrenze: nicht
+mehr Instanzen als Partitionen (`KAFKA_NUM_PARTITIONS`, im Prototyp 3).
 
 ### Kein Table Format: keine ACID-Garantien
 
@@ -1053,7 +1070,8 @@ Anzeige neu implementiert wird.
 
 ### Keine Authentifizierung
 
-Weder API noch UI noch MinIO-Konsole verlangen innerhalb des Clusters eine Anmeldung; nach
+Weder API noch UI verlangen eine Anmeldung, die MinIO-Konsole nur die Root-Zugangsdaten
+aus dem Secret; nach
 außen ist nur die UI (Ingress mit TLS) exponiert. Für einen Prototyp im abgeschotteten
 DHBW-Netz angemessen, für mehr nicht.
 

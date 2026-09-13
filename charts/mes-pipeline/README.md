@@ -31,10 +31,10 @@ Vollständige Abbildung Komponente → Workload/Service/PVC/Probes: Haupt-README
 
 ```bash
 # minikube
-helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait --timeout 10m
 
 # DHBW Cloud
-helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml -f ./charts/mes-pipeline/values-dhbw.yaml --namespace mes --create-namespace --wait
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml -f ./charts/mes-pipeline/values-dhbw.yaml --namespace mes --create-namespace --wait --timeout 10m
 ```
 
 `values-dhbw.yaml` überschreibt ausschließlich Image-Registry, `imagePullPolicy`, UI-Service-Typ

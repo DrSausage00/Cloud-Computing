@@ -48,9 +48,9 @@ drei Instanzen parallel, je eine pro Maschinentyp:
 
 | Instanz | `MACHINE_TYPES` | Checkpoint-Suffix |
 |---|---|---|
-| `stream-processing-a` | `A` | `machine-metrics-a`, `machine-status-a`, `machine-events-a` |
-| `stream-processing-b` | `B` | `machine-metrics-b`, `machine-status-b`, `machine-events-b` |
-| `stream-processing-c` | `C` | `machine-metrics-c`, `machine-status-c`, `machine-events-c` |
+| `stream-processing-a` | `A` | `machine-metrics-a`, `machine-status-a`, `machine-events-v2-a` |
+| `stream-processing-b` | `B` | `machine-metrics-b`, `machine-status-b`, `machine-events-v2-b` |
+| `stream-processing-c` | `C` | `machine-metrics-c`, `machine-status-c`, `machine-events-v2-c` |
 
 **Warum nicht einfach `replicas: 3`.** Mehrere Replicas desselben Deployments würden dasselbe
 Kafka-Topic vom selben Offset lesen und dieselben Aggregate mehrfach schreiben. Die

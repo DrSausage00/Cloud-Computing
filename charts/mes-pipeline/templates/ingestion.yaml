@@ -37,8 +37,6 @@ spec:
         - name: ingestion
           image: {{ include "mes.image" (dict "ctx" $ "image" $.Values.ingestion.image "tag" $.Values.ingestion.tag) | quote }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
-          ports:
-            - containerPort: 80
           resources:
             {{- toYaml $.Values.ingestion.resources | nindent 12 }}
           livenessProbe:
