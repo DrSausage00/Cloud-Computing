@@ -24,12 +24,17 @@ Kafka (Topic: machine-events, gefiltert auf MACHINE_TYPES dieser Instanz)
         ↓
 Parsing (generische measurements-Map → benannte Spalten)
         ↓
-        ├──▶ Bronze-Stream  ──▶ MinIO: bronze/machine-events        (Rohereignisse, append)
-        ├──▶ Status-Stream  ──▶ MinIO: silver/machine-status        (foreachBatch, overwrite je machine_type-Partition)
+        ├──▶ Bronze-Stream  ──▶ MinIO: bronze/machine-events/machine_type=<X>/   (foreachBatch, append, partitioniert nach event_date)
+        ├──▶ Status-Stream  ──▶ MinIO: silver/machine-status/machine_type=<X>/   (foreachBatch, overwrite des eigenen Ordners)
         └──▶ Aggregation (Watermark, 10s-Fenster, avg/min/max/count)
                     ↓
-             Silver-Stream  ──▶ MinIO: silver/machine-metrics       (foreachBatch, partitioniert nach machine_type/event_date)
+             Silver-Stream  ──▶ MinIO: silver/machine-metrics/machine_type=<X>/  (foreachBatch, append, partitioniert nach event_date)
 ```
+
+Alle drei Writer schreiben direkt in den `machine_type`-Ordner ihrer Instanz statt per
+`partitionBy("machine_type")` in die Tabellenwurzel. Für Leser ist das dasselbe
+Hive-Layout; für die Schreiber bedeutet es getrennte `_temporary`-Staging-Verzeichnisse und
+kein gemeinsames `_spark_metadata`-Log — der Grund steht im Haupt-README §12.
 
 Die drei Ausgaben laufen als unabhängige `writeStream`-Queries aus demselben Quell-DataFrame,
 jede mit eigenem Checkpoint-Pfad (`checkpoint_dir/<name>-<machine_types_suffix>`) — damit die
@@ -58,13 +63,24 @@ Instanzen als Partitionen bringen keinen zusätzlichen Durchsatz.
 
 ## Konfiguration
 
-| Variable | Standard | Bedeutung |
-|---|---|---|
-| `TEMP_LIMIT` | `95.0` | Temperaturgrenzwert, ab dem `limit_exceeded` gesetzt wird |
-| `MACHINE_TYPES` | `A,B,C` | Kommaliste der Typen, die diese Instanz verarbeitet |
-| `SILVER_TRIGGER_INTERVAL_SECONDS` | `10` | Trigger-Intervall des Silver-Schreib-Micro-Batches |
-| `SPARK_CHECKPOINT_DIR` | `/checkpoints` | Basis-Pfad für alle Checkpoints dieser Instanz |
-| `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_DATA_BUCKET` | – | MinIO-Zugang |
+| Variable | Default im Code | Wert im Kubernetes-Deployment | Bedeutung |
+|---|---|---|---|
+| `TEMP_LIMIT` | `95.0` | `85` (ConfigMap `pipeline-config`) | Temperaturgrenzwert, ab dem `limit_exceeded` gesetzt wird |
+| `MACHINE_TYPES` | `A,B,C` | `A` / `B` / `C` je Instanz (Helm-`range`) | Kommaliste der Typen, die diese Instanz verarbeitet |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | `kafka:9092` (ConfigMap) | Broker-Adresse |
+| `SILVER_TRIGGER_INTERVAL_SECONDS` | `10` | nicht gesetzt (10) | Trigger-Intervall des Silver-Schreib-Micro-Batches |
+| `SPARK_CHECKPOINT_DIR` | `/checkpoints` | `s3a://spark-checkpoints/checkpoints` (ConfigMap) | Basis-Pfad für alle Checkpoints dieser Instanz |
+| `SILVER_TABLE_PATH` | `silver/machine-metrics` | dito (ConfigMap) | Zielpfad der Aggregate im Bucket |
+| `MINIO_ENDPOINT`, `MINIO_DATA_BUCKET` | `http://minio:9000`, `mes-data` | dito (ConfigMap) | MinIO-Ziel |
+| `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | – | aus Secret `minio-credentials` | MinIO-Zugang |
+
+Die drei Queries im Überblick:
+
+| Query | Output-Mode | Watermark | Warum so |
+|---|---|---|---|
+| Bronze | `append` via `foreachBatch` (Checkpoint `machine-events-v2-<instanz>`) | keine | jedes Ereignis soll ankommen, auch ein sehr spätes — Bronze ist das Archiv; `foreachBatch` statt nativem File-Sink, damit kein `_spark_metadata`-Log zwischen den Instanzen geteilt wird |
+| Silver-Metrics | `append` via `foreachBatch` | 30 s | Fenster werden erst nach Ablauf der Watermark einmalig ausgegeben; `foreachBatch` erlaubt den direkten Schreibpfad je Instanz |
+| Silver-Status | `complete` via `foreachBatch`, `overwrite` des eigenen `machine_type`-Ordners | keine | der Zustand „letzter Status je Maschine" ist klein (eine Zeile je Maschine) und soll immer vollständig vorliegen |
 
 ## Kompaktierung
 

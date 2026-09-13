@@ -14,14 +14,18 @@ Hinweis zur KI-Nutzung: In diesem Projekt wurde KI-Unterstützung genutzt (u. a.
 
 ## Aufgabenverteilung
 
-| # | Komponente | Verantwortlich | Ordner |
-|---|------------|----------------|--------|
-| 1 | Ingestion & Datengeneratoren | **Leo**, Kirill | [`ingestion/`](ingestion/) |
-| 2 | Kafka & Storage-Layer (MinIO) | **Kirill** | [`ingestion/storage/`](ingestion/storage/), [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml), [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml) |
-| 3 | Stream Processing (Spark) | **Cäcilia** | [`stream-processing/`](stream-processing/) |
-| 4 | Serving-API (FastAPI) | **Aaron** | [`serving-api/`](serving-api/) |
-| 5 | User-facing UI | **Max** | [`ui/`](ui/) |
-| 6 | Kubernetes-Deployment, Kompaktierung & Doku (Integrator) | **Lars** | [`charts/mes-pipeline/`](charts/mes-pipeline/), [`terraform/`](terraform/), [`ansible/`](ansible/), [`docs/`](docs/) |
+| # | Komponente | Matrikelnr. | Ordner |
+|---|------------|-------------|--------|
+| 1 | Ingestion & Datengeneratoren | **3317974**, 4576203 | [`ingestion/`](ingestion/) |
+| 2 | Kafka & Storage-Layer (MinIO) | **4576203** | [`ingestion/storage/`](ingestion/storage/), [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml), [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml) |
+| 3 | Stream Processing (Spark) | **3661988** | [`stream-processing/`](stream-processing/) |
+| 4 | Serving-API (FastAPI) | **5333240** | [`serving-api/`](serving-api/) |
+| 5 | User-facing UI | **1729291** | [`ui/`](ui/) |
+| 6 | Kubernetes-Deployment, Kompaktierung & Doku (Integrator) | **2010638** | [`charts/mes-pipeline/`](charts/mes-pipeline/), [`terraform/`](terraform/), [`ansible/`](ansible/), [`docs/`](docs/) |
+
+Fett ist jeweils die Hauptverantwortung. Jede Person hat unter ihrem eigenen Git-Konto
+committet; die Zuordnung der Commits zu den Komponenten ergibt sich aus den Pfaden in der
+History (`git log --stat -- <ordner>`).
 
 Details zum Arbeitsablauf: siehe [CONTRIBUTING.md](CONTRIBUTING.md).
 Schnittstellen zwischen den Komponenten: siehe [docs/interface-contracts.md](docs/interface-contracts.md).
@@ -53,6 +57,18 @@ so wie es in gewachsenen Werkslandschaften tatsächlich ist. Ein *Manufacturing 
 (MES) führt diese Ströme zusammen und überwacht sie nahezu in Echtzeit: Läuft jede Maschine?
 Überschreitet eine die Temperaturgrenze? Wie sah der Verlauf der letzten Stunde aus?
 
+**Wer hat welchen Schmerz.** Die Schichtleitung will auf einen Blick sehen, welche Maschine
+gerade außerhalb ihres Sollbereichs läuft, ohne drei Herstellerportale zu öffnen. Die
+Instandhaltung will nach einem Ausfall den Temperaturverlauf der letzten Minuten sehen, nicht
+erst am nächsten Tag aus einem Batch-Report. Beide brauchen dieselben Daten, aber mit
+unterschiedlicher Latenz-Toleranz: Sekunden für die Übersicht, Minuten für die Analyse.
+
+**Datenquelle.** Drei simulierte Maschinentypen (A, B, C) mit je eigenem Rohformat und eigener
+physikalischer Dynamik (Aufheizen, Kühlen, Betriebspausen, Fehlerzustände), siehe §2 und
+[`ingestion/simulators/`](ingestion/simulators/). Die Simulation ersetzt reale Maschinen, das
+Datenformat und die Verarbeitungskette sind aber so gebaut, wie sie auch mit echten
+Maschinenanbindungen aussähen.
+
 **Warum das ein Big-Data-Problem ist** — nicht wegen der Datenmenge des Prototyps, die ist klein,
 sondern wegen der Struktur des Problems:
 
@@ -73,8 +89,10 @@ Die Architektur ist damit auf ein Volumen ausgelegt, das der Prototyp bewusst ni
 
 ### Volume
 
-Der Simulator erzeugt je Durchlauf 10 Events von Maschinentyp A, 5 von B und 3 von C und
-pausiert dann zwei Sekunden — also **18 Events alle 2 Sekunden** pro Ingestion-Instanz.
+Die Simulatoren erzeugen je Durchlauf 10 Events von Maschinentyp A, 5 von B und 3 von C und
+pausieren dann zwei Sekunden — also **18 Events alle 2 Sekunden** über die drei
+Ingestion-Instanzen zusammen (`ingestion-a` 10, `ingestion-b` 5, `ingestion-c` 3; siehe
+[`ingestion/main.py`](ingestion/main.py)).
 
 | Größe | Prototyp | Hochgerechnet (500 Maschinen, 1 Hz) |
 |---|---|---|
@@ -93,6 +111,23 @@ Kontinuierlicher Strom ohne Ende. Die Verarbeitung erfolgt in 10-Sekunden-Fenste
 Event-Time mit einer Watermark von 30 Sekunden (siehe §5); verspätete Ereignisse innerhalb
 dieses Fensters werden noch berücksichtigt, spätere verworfen.
 
+**Latenzanforderung.** Die Übersichtskacheln sollen den Zustand einer Maschine innerhalb von
+unter einer Minute nach dem Ereignis zeigen. Das Latenzbudget setzt sich zusammen aus:
+
+| Schritt | Beitrag |
+|---|---|
+| Ingestion-Takt | ≤ 2 s |
+| Fenster schließt (10-s-Fenster) | ≤ 10 s |
+| Watermark (Fenster wird erst nach 30 s Event-Time als abgeschlossen ausgegeben) | 30 s |
+| Micro-Batch-Trigger des Silver-Writers | ≤ 10 s |
+| API-Cache (TTL 30 s) + UI-Polling (5 s) | ≤ 35 s |
+| **Summe (worst case)** | **≈ 90 s**, typisch 40–60 s |
+
+Die Ingest-Rate von 9 Events/s liegt weit unter dem, was ein einzelner Kafka-Broker verkraftet.
+Die Architektur ist auf die hochgerechnete Rate von 500 Events/s und mehr ausgelegt, weil die
+Skalierungsachse (Kafka-Partitionen, je eine Stream-Processing-Instanz pro Partition, siehe §8)
+davon unabhängig ist.
+
 ### Variety
 
 Drei Rohformate werden in der Ingestion auf ein einheitliches Schema normalisiert. Das ist der
@@ -100,18 +135,25 @@ eigentliche fachliche Kern des Use Case:
 
 | Maschinentyp | Format | Beispiel |
 |---|---|---|
-| A | JSON | `{"timestamp": "...", "machine_id": "A-001", "temperature": 78.3, "pressure": 4.1, "rotation_speed": 1500.2, "power_consumption": 12.4}` |
+| A | JSON, flach | `{"timestamp": "...", "machine_id": "A-001", "status": "RUNNING", "temperature": 78.3, "pressure": 4.1, "rotation_speed": 1500.2, "power_consumption": 12.4, "runtime_seconds": 3600.0}` |
 | B | JSON, andere Feldnamen | `{"ts": "...", "id": "B-001", "temp": 65.8, "vibration": 3.2}` |
 | C | Pipe-separiert | `2026-09-07T14:00:00\|C-001\|88.1\|RUNNING` |
 
 Schon zwischen A und B unterscheiden sich die Feldnamen (`timestamp`/`ts`, `machine_id`/`id`,
 `temperature`/`temp`) — die Normalisierung darf sich also nicht auf gleiche Schlüssel verlassen.
+Die drei Parser in [`ingestion/parsers/`](ingestion/parsers/) bilden alle drei Formate auf
+dasselbe Envelope-Schema ab (`timestamp`, `machine_id`, `machine_type`, generische
+`measurements`-Map, `schema_version`), siehe
+[`ingestion/schema/unified_schema.py`](ingestion/schema/unified_schema.py).
 
 ### Veracity
 
-Nicht jedes Ereignis trägt jedes Feld. Nur Maschinentyp C meldet einen Status, Druck und
-Vibration sind nicht bei allen Typen vorhanden. Die Verarbeitung muss mit fehlenden Feldern
-umgehen, statt sie vorauszusetzen.
+Nicht jedes Ereignis trägt jedes Feld. Einen Betriebsstatus melden nur die Typen A
+(`OFF`/`STARTING`/`RUNNING`/`COOLING`/`ERROR`) und C (`RUNNING`/`PAUSED`), Typ B gar keinen;
+Druck und Drehzahl liefert nur A, Vibration nur B. Die Verarbeitung muss mit fehlenden Feldern
+umgehen, statt sie vorauszusetzen — im Silver-Schema ist `last_status` deshalb für Typ B
+dauerhaft `null`, und die API wandelt `NaN` explizit in `null` um, statt einen Serverfehler zu
+werfen.
 
 ---
 
@@ -119,6 +161,11 @@ umgehen, statt sie vorauszusetzen.
 
 Wir setzen eine **Kappa-Architektur** um: ein einziger Verarbeitungspfad für alle Daten,
 Streaming als Standardfall. Kein separater Batch-Zweig.
+
+![Architekturdiagramm](docs/architecture.svg)
+
+*Jede Box ist ein Workload im Helm-Chart, jeder Pfeil ein tatsächlicher Datenfluss. Die
+Komponenten im Einzelnen und ihre Technologiewahl: §4. Abbildung auf Kubernetes-Workloads: §8.*
 
 **Warum nicht Lambda.** Lambda führt zwei Pfade parallel, einen für Echtzeit und einen für
 Genauigkeit. Der Preis ist, dieselbe Logik zweimal zu implementieren und konsistent zu halten —
@@ -151,18 +198,20 @@ keine Schema-Evolution haben — siehe §12.
 
 ## 4. Komponenten und Datenfluss
 
-![Architekturdiagramm](docs/architecture.svg)
+Ende-zu-Ende: Simulator → Parser → Kafka-Topic `machine-events` → Spark (Filter, Fenster,
+Anreicherung) → Parquet in MinIO (Bronze + Silver) → Serving-API (liest Silver) → UI
+(pollt die API). Das Diagramm dazu steht in §3.
 
-| Komponente | Ordner | Verantwortlich | Aufgabe |
+| Komponente | Ordner | Matrikelnr. | Aufgabe |
 |---|---|---|---|
-| Ingestion (× 3) | [`ingestion/`](ingestion/) — [README](ingestion/README.md) | Leo, Kirill | Simulatoren, Normalisierung, Kafka-Producer, je Instanz ein Maschinentyp |
-| Kafka | [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml) | Kirill | Broker im KRaft-Modus (3 Broker), Topic `machine-events`, 3 Partitionen |
-| Stream Processing (× 3) | [`stream-processing/`](stream-processing/) — [README](stream-processing/README.md) | Cäcilia | Spark Structured Streaming, je Instanz ein Maschinentyp |
-| MinIO | [`ingestion/storage/`](ingestion/storage/) — [README](ingestion/storage/README.md) | Kirill | S3-kompatibler Objektspeicher (4-Node Distributed Mode), Bronze- und Silver-Schicht |
-| Kompaktierung (× 2 CronJobs) | [`charts/mes-pipeline/templates/compaction-cronjob.yaml`](charts/mes-pipeline/templates/compaction-cronjob.yaml), [`bronze-compaction-cronjob.yaml`](charts/mes-pipeline/templates/bronze-compaction-cronjob.yaml) | Lars | Fasst viele kleine Streaming-Dateien periodisch zu großen zusammen — siehe §6 |
-| Serving-API | [`serving-api/`](serving-api/) — [README](serving-api/README.md) | Aaron | Abfrage-Endpunkte über der Silver-Schicht |
-| UI | [`ui/`](ui/) — [README](ui/README.md) | Max | Dashboard |
-| Deployment | [`charts/mes-pipeline/`](charts/mes-pipeline/) — [README](charts/mes-pipeline/README.md) | Lars | Helm-Chart, Cluster-Bereitstellung (Terraform + Ansible/k3s) |
+| Ingestion (× 3) | [`ingestion/`](ingestion/) — [README](ingestion/README.md) | 3317974, 4576203 | Simulatoren, Normalisierung, Kafka-Producer, je Instanz ein Maschinentyp |
+| Kafka | [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml) | 4576203 | Broker im KRaft-Modus (3 Broker), Topic `machine-events`, 3 Partitionen |
+| Stream Processing (× 3) | [`stream-processing/`](stream-processing/) — [README](stream-processing/README.md) | 3661988 | Spark Structured Streaming, je Instanz ein Maschinentyp |
+| MinIO | [`ingestion/storage/`](ingestion/storage/) — [README](ingestion/storage/README.md) | 4576203 | S3-kompatibler Objektspeicher (4-Node Distributed Mode), Bronze- und Silver-Schicht |
+| Kompaktierung (× 2 CronJobs) | [`charts/mes-pipeline/templates/compaction-cronjob.yaml`](charts/mes-pipeline/templates/compaction-cronjob.yaml), [`bronze-compaction-cronjob.yaml`](charts/mes-pipeline/templates/bronze-compaction-cronjob.yaml) | 2010638 | Fasst viele kleine Streaming-Dateien periodisch zu großen zusammen — siehe §6 |
+| Serving-API | [`serving-api/`](serving-api/) — [README](serving-api/README.md) | 5333240 | Abfrage-Endpunkte über der Silver-Schicht |
+| UI | [`ui/`](ui/) — [README](ui/README.md) | 1729291 | Dashboard |
+| Deployment | [`charts/mes-pipeline/`](charts/mes-pipeline/) — [README](charts/mes-pipeline/README.md) | 2010638 | Helm-Chart, Cluster-Bereitstellung (Terraform + Ansible/k3s) |
 
 **Warum ein Broker dazwischen.** Ohne Kafka wären Ingestion und Verarbeitung fest gekoppelt: Ein
 kurzer Ausfall der Verarbeitung würde Ereignisse verlieren, und eine langsame Verarbeitung würde
@@ -170,9 +219,35 @@ die Erzeugung ausbremsen. Mit Kafka warten die Ereignisse, die Verarbeitung holt
 ein fehlerhafter Lauf lässt sich durch Zurücksetzen des Offsets auf **denselben** Daten
 wiederholen.
 
-**Warum `machine_id` als Kafka-Key.** Derselbe Key landet immer in derselben Partition. Dadurch
-bleibt die zeitliche Reihenfolge je Maschine garantiert, auch wenn mehrere Konsumenten parallel
-lesen. Die Partitionszahl ist damit gleichzeitig die Obergrenze der Parallelität — siehe §8.
+**Warum `machine_id` als Kafka-Key — und warum trotzdem eine explizite Partitionszuordnung.**
+Derselbe Key landet immer in derselben Partition. Dadurch bleibt die zeitliche Reihenfolge je
+Maschine garantiert, auch wenn mehrere Konsumenten parallel lesen. Mit nur drei verschiedenen
+Keys (`A-001`, `B-001`, `C-001`) kann der Standard-Hash-Partitionierer aber alle drei zufällig
+auf dieselbe Partition legen — die effektive Parallelität wäre dann 1 statt 3. Der Producer
+ordnet bekannte Maschinen deshalb explizit einer Partition zu
+([`ingestion/producer/kafka_producer.py`](ingestion/producer/kafka_producer.py#L31)),
+unbekannte Maschinen laufen weiter über den Standard-Partitionierer. Die Partitionszahl ist
+damit gleichzeitig die Obergrenze der Parallelität — siehe §8.
+
+**Technologiewahl je Komponente.**
+
+| Komponente | Gewählt | Warum diese und keine andere |
+|---|---|---|
+| Ingestion | Python, `kafka-python` | Simulator und Parser sind reine Datenlogik ohne Framework-Bedarf; ein Container-Build, per `MACHINE_TYPES` mehrfach deploybar |
+| Broker | Apache Kafka (KRaft, ohne ZooKeeper) | Partitionierter, persistenter Log mit Offset-Replay — genau die Eigenschaft, die Kappa braucht; KRaft spart einen zweiten StatefulSet |
+| Stream Processing | Spark Structured Streaming | Event-Time-Windowing, Watermarks und Checkpointing sind eingebaut; Kafka-Source und S3A-Sink sind Standardkonnektoren; Lehrstoff der Vorlesung |
+| Storage | MinIO (S3-API) + Parquet | Spark (`s3a://`) und pandas (`s3fs`) sprechen beide nativ S3, kein eigener Treiber nötig; Begründung gegenüber HDFS in §6 |
+| Serving | FastAPI + pandas/pyarrow | Zwei Lese-Endpunkte über Parquet mit Partition Pruning; automatische OpenAPI-Doku; kein Query-Engine-Cluster nötig, weil die Silver-Schicht klein bleibt |
+| UI | Dash (Plotly) | Reine Anzeige-Rolle, Python-Stack wie der Rest, Zeitreihen-Charts eingebaut; Polling statt WebSocket, damit die UI-Pods zustandslos bleiben |
+| Deployment | Helm-Chart, ein Chart für minikube und DHBW Cloud | `range` über Instanzlisten und eine einzige `values-dhbw.yaml` als Umgebungs-Overlay; siehe §8/§9 |
+
+**Was außerdem im Chart steckt, aber im Diagramm nicht als Box erscheint.** Ein Helm-Hook-Job
+`create-buckets` legt nach jedem `helm install`/`upgrade` die Buckets `mes-data` und
+`spark-checkpoints` an ([`minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L97)); er läuft
+einmalig und löscht sich selbst. Er nutzt dafür bewusst das ohnehin vorhandene MinIO-Image
+(das `mc` enthält) statt eines separaten `minio/mc:latest` — ein ungepinntes Docker-Hub-Image
+hat den Upgrade einmal auf einem Knoten ohne Image-Cache scheitern lassen. Dazu kommen die ConfigMap `pipeline-config`, das Secret
+`minio-credentials` und ein auf `deployments` beschränkter ServiceAccount für die CI (§9).
 
 **Warum Ingestion und Stream Processing als je drei Instanzen statt einer.** Beide Komponenten
 sind entlang derselben Achse (Maschinentyp) horizontal aufgeteilt, nicht über naive
@@ -195,13 +270,66 @@ aggregiert über Event-Time-Fenster und schreibt nach MinIO.
 | Ausgabe | Parquet in `mes-data/silver/machine-metrics`, partitioniert nach `machine_type`/`event_date` |
 | Wiederanlauf | Checkpoints in `spark-checkpoints`, je Instanz und je Query ein eigener Pfad |
 
+Alles davon steht in einer Datei, [`stream-processing/streaming_job.py`](stream-processing/streaming_job.py):
+
+1. **Parsen.** Die Kafka-Nachricht wird per `from_json` gegen das Envelope-Schema gelesen; die
+   generische `measurements`-Map wird in benannte Spalten (`temperature`, `pressure`,
+   `vibration`, `status`) aufgelöst, fehlende Schlüssel werden `null`
+   ([Zeile 82–94](stream-processing/streaming_job.py#L82-L94)).
+2. **Filtern.** `machine_type IN MACHINE_TYPES` — jede Instanz behält nur ihren Typ
+   ([Zeile 96](stream-processing/streaming_job.py#L96)). Das ist die Grundlage der horizontalen
+   Skalierung in §8.
+3. **Drei Queries aus demselben Quell-DataFrame:**
+
+| Query | Transformation | Output-Mode | Ziel |
+|---|---|---|---|
+| Bronze | nur `event_date` ergänzen, **keine** Watermark | `append` über `foreachBatch` | `bronze/machine-events/machine_type=<X>/`, partitioniert nach `event_date` |
+| Silver-Metrics | `withWatermark(30 s)` → `window(10 s)` × `machine_id` → `avg/min/max(temperature)`, `count(*)`, `max_by(status, timestamp)` → `limit_exceeded = max_temperature > TEMP_LIMIT` ([Zeile 111–137](stream-processing/streaming_job.py#L111-L137)) | `append` über `foreachBatch`, Trigger alle 10 s | `silver/machine-metrics/machine_type=<X>/`, partitioniert nach `event_date` |
+| Silver-Status | `groupBy(machine_id)` → `max_by(status, timestamp)` als `last_status` ([Zeile 102–108](stream-processing/streaming_job.py#L102-L108)) | `complete` über `foreachBatch`, `overwrite` des eigenen `machine_type`-Ordners | `silver/machine-status/machine_type=<X>/` |
+
+Alle drei Writer schreiben über `foreachBatch` **direkt in den `machine_type`-Ordner ihrer
+Instanz** statt per `partitionBy("machine_type", …)` in die Tabellenwurzel. Für Leser ist das
+Ergebnis identisch (Hive-Partitionslayout `machine_type=A/event_date=…/`), aber die
+Verwaltungsverzeichnisse, die Spark beim Schreiben anlegt, liegen damit je Instanz getrennt —
+warum das nötig war, steht in §6 und §12.
+
+**Windowing.** Tumbling Windows von 10 Sekunden über der Event-Time-Spalte `timestamp`. Jedes
+Fenster liefert je Maschine eine Zeile mit Durchschnitts-, Minimal- und Maximaltemperatur sowie
+der Ereigniszahl — bei 10 Events/2 s für Typ A also ~50 Events pro Fenster. Das ist die
+nicht-triviale Transformation: aus 9 Rohereignissen pro Sekunde werden 3 Aggregatzeilen pro
+10 Sekunden.
+
+**Stateful Processing.** Die Status-Query ist zustandsbehaftet im engeren Sinne: Sie läuft im
+`complete`-Modus ohne Watermark, hält also je Maschine den zuletzt gesehenen Status als
+Spark-State über alle Micro-Batches hinweg und schreibt bei jedem Batch die komplette
+Zustandstabelle neu. Der Zustand ist auf die Zahl der Maschinen begrenzt, wächst also nicht mit
+der Zeit. Zusätzlich trägt jedes Silver-Fenster über `max_by(status, timestamp)` den letzten
+Status *innerhalb des Fensters*. Beides liegt im Checkpoint, ein Pod-Neustart setzt darauf auf.
+
+**Anreicherung.** `TEMP_LIMIT` kommt aus der ConfigMap `pipeline-config`
+([`configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml), Wert `85`) und wird als
+Spalte `temperature_limit` in jede Silver-Zeile geschrieben, dazu das Flag `limit_exceeded`.
+Weil der Wert *in* den Daten steht, lässt sich später nachvollziehen, welcher Grenzwert zum
+Zeitpunkt der Aggregation galt — auch nach einer Änderung der ConfigMap.
+
 **Warum Event-Time und nicht Verarbeitungszeit.** Ein Ereignis, das wegen einer Netzstörung
 zehn Sekunden später ankommt, gehört fachlich in das Fenster seiner Entstehung, nicht in das
 seiner Ankunft. Nur so bleiben die Aggregate über Wiederholungen hinweg identisch.
 
-**Warum eine Watermark nötig ist.** Ohne sie müsste Spark jedes Fenster unbegrenzt offen halten,
-falls doch noch ein spätes Ereignis kommt — der Zustand würde monoton wachsen. Die Watermark ist
-die explizite Zusage: Nach 30 Sekunden wird ein Fenster geschlossen, Späteres wird verworfen.
+**Late Data: warum eine Watermark nötig ist und was sie genau tut.** Ohne sie müsste Spark
+jedes Fenster unbegrenzt offen halten, falls doch noch ein spätes Ereignis kommt — der Zustand
+würde monoton wachsen. Die Watermark ist die explizite Zusage: Ein Ereignis, dessen
+Event-Time mehr als 30 Sekunden hinter dem jüngsten bisher gesehenen Zeitstempel liegt, wird
+für die Aggregation verworfen; ein Fenster gilt als abgeschlossen und wird im `append`-Modus
+erst ausgegeben, wenn die Watermark sein Ende überschritten hat. Zwei Konsequenzen, die man
+kennen muss:
+
+- Die Ausgabe-Latenz eines Fensters beträgt mindestens Fensterlänge + Watermark (≈ 40 s), das
+  ist der Preis für korrekte Aggregate bei verspäteten Ereignissen.
+- Verworfen wird nur in der **Silver**-Aggregation. Die Bronze-Query hat bewusst keine Watermark,
+  jedes Ereignis landet also unabhängig von seiner Verspätung im Rohdaten-Archiv — und im
+  Kafka-Log ohnehin. Ein später erkannter Verlust lässt sich damit durch Offset-Reset oder aus
+  Bronze nachverarbeiten, wie es die Kappa-Idee vorsieht.
 
 **Warum genau 30 Sekunden — eine Lektion aus dem Betrieb.** Der Wert stand ursprünglich bei 20s.
 Solange eine einzelne Instanz alle drei Maschinentypen zugleich verarbeitete, dauerte ein
@@ -220,7 +348,78 @@ auf ein Drittel, wodurch 30s als Kompromiss aus Sicherheitsmarge und UI-Aktualit
 **Parquet.** Spaltenorientiert, komprimiert und mit eingebettetem Schema. Für die Abfragen der
 Serving-API — „Durchschnittstemperatur je Maschine der letzten Stunde" — werden nur wenige
 Spalten gelesen; ein zeilenorientiertes Format wie CSV oder JSON müsste jedes Mal alles lesen.
-Kein Delta Lake/Iceberg (siehe §3 und §12) — bewusste Lücke, kein Zeitdruck-Kompromiss.
+
+**Warum Parquet ohne Delta Lake/Iceberg.** Delta hätte uns ACID-Commits und Schema-Evolution
+gegeben — und damit das Kompaktierungsproblem unten eleganter gelöst. Wir haben es trotzdem
+nicht eingesetzt, aus einem konkreten Grund: Der Lesepfad ist nicht Spark, sondern
+pandas/pyarrow in der Serving-API. Delta hätte dort eine zweite Reader-Bibliothek
+(`deltalake`) mit eigener Versionsabstimmung gegen Spark 4.2 erfordert; reines Parquet lesen
+beide Seiten ohne Zusatzschicht. Die Konsequenzen (kein ACID, keine Schema-Evolution) sind in
+§12 benannt, die konkrete Lücke (Commit-Konflikte bei paralleler Kompaktierung) ist mit Retries
+abgefangen. Delta ist der erste Punkt im Ausblick.
+
+**Warum ein Data Lake auf Objektspeicher — und warum MinIO statt HDFS.** Das Speicherkonzept
+ist ein Data Lake im Sinne der Vorlesung: offene Dateiformate auf einem günstigen, horizontal
+skalierbaren Speicher, getrennt vom Compute (Spark schreibt, pandas liest, beide ohne
+gemeinsamen Prozess). Wir haben dafür bewusst nicht HDFS gewählt, das in der Vorlesung als
+Standard gezeigt wird:
+
+| | HDFS | MinIO (S3-API) |
+|---|---|---|
+| Kubernetes-Betrieb | NameNode + DataNodes, zwei Workload-Typen mit unterschiedlicher Rolle, NameNode als Single Point of Failure ohne HA-Setup | ein StatefulSet mit gleichartigen Pods, Erasure Coding verteilt Redundanz symmetrisch |
+| Zugriff aus Python | `hdfs://` braucht Hadoop-Client oder WebHDFS | `s3fs`/`pyarrow` sprechen S3 nativ, dieselbe Zugriffsschicht wie bei AWS S3 |
+| Zugriff aus Spark | nativ | nativ über `s3a://` (`hadoop-aws`) |
+| Portabilität | an das Hadoop-Ökosystem gebunden | dieselben Pfade und Credentials laufen unverändert gegen AWS S3, Ceph, SeaweedFS |
+| Footprint | JVM-Prozesse mit hohem Speicherbedarf | ein Go-Binary, 256 Mi Request pro Knoten |
+
+Das ist die *begründete Abweichung* vom gelehrten Standardweg im Sinne des Bonus-Kriteriums:
+weniger bewegliche Teile auf Kubernetes, ein Protokoll (S3) für beide Zugriffsseiten, und ein
+Speicherpfad, der ohne Codeänderung in eine Public Cloud umziehen könnte.
+
+### Schema
+
+Die Tabellen sind schemabehaftet über die eingebetteten Parquet-Metadaten; die logische
+Definition liegt zusätzlich als DDL-Notation in
+[`ingestion/storage/schema.sql`](ingestion/storage/schema.sql).
+
+**`silver/machine-metrics`** — eine Zeile je Maschine und 10-s-Fenster (geschrieben in
+[`streaming_job.py`](stream-processing/streaming_job.py#L127-L137)):
+
+| Spalte | Typ | Bedeutung |
+|---|---|---|
+| `machine_id`, `machine_type` | string | Gruppierung; `machine_type` ist Partitionsspalte |
+| `window_start`, `window_end` | timestamp | Fenstergrenzen (Event-Time) |
+| `avg_temperature`, `min_temperature`, `max_temperature` | double, nullable | Aggregate über das Fenster |
+| `event_count` | long | Anzahl Ereignisse im Fenster |
+| `last_status` | string, nullable | letzter Status im Fenster (`null` bei Typ B) |
+| `temperature_limit` | double | zum Zeitpunkt der Aggregation geltender Grenzwert |
+| `limit_exceeded` | boolean | `max_temperature > temperature_limit` |
+| `event_date` | date | Partitionsspalte, aus `window_start` |
+
+**`silver/machine-status`** — eine Zeile je Maschine, bei jedem Batch komplett neu geschrieben:
+
+| Spalte | Typ | Bedeutung |
+|---|---|---|
+| `machine_id` | string | |
+| `machine_type` | string | Partitionsspalte |
+| `last_status` | string | zuletzt gesehener Status über alle Zeit |
+| `last_timestamp` | timestamp | Event-Time dieses Status |
+
+**`bronze/machine-events`** — eine Zeile je Rohereignis:
+
+| Spalte | Typ | Bedeutung |
+|---|---|---|
+| `timestamp` | timestamp | Event-Time |
+| `machine_id`, `machine_type` | string | |
+| `measurements` | map<string,string> | die vollständige, generische Messwert-Map aus dem Kafka-Event |
+| `temperature`, `pressure`, `vibration` | double, nullable | aus `measurements` extrahiert |
+| `status` | string, nullable | aus `measurements` extrahiert |
+| `schema_version` | string | `"1.0"` |
+| `event_date` | date | Partitionsspalte |
+
+Bronze behält die Map bewusst zusätzlich zu den extrahierten Spalten: Ein neues Messfeld eines
+Maschinentyps (z. B. `rotation_speed`) liegt damit schon in Bronze, auch wenn Silver es noch
+nicht auswertet.
 
 ### Partitionierung
 
@@ -228,11 +427,19 @@ Kein Delta Lake/Iceberg (siehe §3 und §12) — bewusste Lücke, kein Zeitdruck
 |---|---|---|
 | `silver/machine-metrics` | `machine_type`, `event_date` | Die Serving-API filtert praktisch immer nach Zeitraum (Partition Pruning über `event_date`); `machine_type` verhindert zusätzlich, dass die drei parallelen Stream-Processing-Instanzen sich beim Schreiben gegenseitig überschreiben |
 | `silver/machine-status` | `machine_type` | Gleicher Grund: drei parallele Schreiber, ein Ziel — ohne Partitionierung würde `mode("overwrite")` den Status der jeweils anderen zwei Maschinentypen löschen |
-| `bronze/machine-events` | `event_date` | Rohablage, nur nach Zeit sinnvoll abzugrenzen |
+| `bronze/machine-events` | `machine_type`, `event_date` | Rohablage; `machine_type` aus demselben Grund wie oben (getrennte Schreibpfade der drei Instanzen), `event_date` für die tageweise Kompaktierung und spätere Nachverarbeitung |
 
 **Warum nicht nach `machine_id`.** Bei potenziell vielen Maschinen entstünde eine sehr große
 Zahl kleiner Partitionen. `machine_type` hat nur drei Ausprägungen und deckt trotzdem den
-Konflikt zwischen den parallelen Schreibern ab.
+Konflikt zwischen den parallelen Schreibern auf Datenebene ab.
+
+**Was die Partitionierung allein nicht abdeckt.** `partitionBy("machine_type")` trennt die
+Daten-Ordner, nicht die Verwaltungsverzeichnisse, die Spark unter dem Schreibpfad anlegt
+(`_temporary` des Output-Committers, `_spark_metadata` des Streaming-File-Sinks). Solange
+alle drei Instanzen die Tabellenwurzel als Schreibpfad nutzten, teilten sie sich diese
+Verzeichnisse und kamen sich darin in die Quere — im Betrieb ist das passiert, Details in
+§12. Deshalb schreibt jede Instanz jetzt direkt in `…/machine_type=<X>/` als Schreibpfad; das
+Layout bleibt gleich, die Staging-Verzeichnisse sind disjunkt.
 
 ### Das Small-Files-Problem — und warum es zwei CronJobs gibt
 
@@ -253,12 +460,14 @@ schreibt sie als eine Datei neu. Die Dateizahl folgt dadurch einem Sägezahn-Mus
 
 Zwei Besonderheiten, die der Betrieb tatsächlich gezeigt hat:
 
-- **Bronze wird von Sparks nativem Structured-Streaming-Sink beschrieben** und legt dabei einen
-  `_spark_metadata`-Konsistenz-Log an. Ein normaler Batch-Read der Tabellenwurzel nutzt diesen
-  Log als Dateiliste statt einer echten Verzeichnis-Auflistung — nach einer Kompaktierung
-  verweist er auf bereits gelöschte Dateien. Die Kompaktierung liest und schreibt deshalb bei
-  einspaltiger Partitionierung direkt den betroffenen Partitionsordner, statt über die
-  Tabellenwurzel zu gehen, und umgeht den Log damit vollständig.
+- **Bronze wurde zunächst von Sparks nativem Structured-Streaming-Sink beschrieben**, der einen
+  `_spark_metadata`-Konsistenz-Log anlegt. Ein normaler Batch-Read der Tabellenwurzel nutzt
+  diesen Log als Dateiliste statt einer echten Verzeichnis-Auflistung — nach einer
+  Kompaktierung verweist er auf bereits gelöschte Dateien. Die Kompaktierung las deshalb bei
+  einspaltiger Partitionierung direkt den Partitionsordner (der Zweig ist in `compact.py` noch
+  enthalten). Inzwischen schreibt Bronze über `foreachBatch` ohne diesen Log (§5, §12), und die
+  Kompaktierung geht bei Bronze wie bei Silver über die Tabellenwurzel
+  (`PARTITION_COLS=machine_type,event_date`).
 - **`count()` und der anschließende `write()` dürfen nicht zwei unabhängige Lesevorgänge sein.**
   Ohne `.cache()` wertet Spark denselben DataFrame zweimal aus — einmal fürs Zählen, einmal
   fürs Schreiben. Läuft dazwischen ein weiterer Streaming-Micro-Batch, sieht der zweite Read
@@ -277,9 +486,18 @@ Kafka-Logs hinaus, für genau die in §12 benannte Lücke des reinen Kappa-Ansat
 Die Weboberfläche zeigt die Maschinenübersicht der Pipeline live an — eine Kachel je Maschine
 mit den aktuellen Aggregatwerten aus der Silver-Schicht, dazu ein Temperaturverlauf im Detail.
 
+**Rolle.** Anzeige der verarbeiteten Ergebnisse (die zweite in der Aufgabe genannte Rolle,
+Datenlieferant, übernehmen die Ingestion-Simulatoren). Die UI ist eine eigene Komponente
+([`ui/`](ui/)), als eigenes Image containerisiert und als `Deployment` mit `Service` (und in
+der DHBW Cloud einem TLS-`Ingress`) deployt — siehe §8.
+
 **Datenanbindung.** Die UI spricht ausschließlich mit der Serving-API (`GET /metrics/latest` für
 die Übersicht, `GET /metrics/history` für den Verlauf) — kein direkter Zugriff auf Kafka, Spark
-oder MinIO. Das hält das Architekturdiagramm konsistent zum tatsächlichen Datenfluss.
+oder MinIO. Das hält das Architekturdiagramm konsistent zum tatsächlichen Datenfluss. Es gibt
+keinen Mock-Betrieb im Deployment: `USE_MOCK` steht in der ConfigMap auf `false`
+([`values.yaml`](charts/mes-pipeline/values.yaml)), der Mock-Zweig in
+[`ui/data_source.py`](ui/data_source.py) existiert nur für die lokale Entwicklung ohne
+laufende API.
 
 | Element | Feld | Warum es überzeugt |
 |---|---|---|
@@ -294,14 +512,66 @@ Die Warnung bei `limit_exceeded` ist das stärkste Element: Sie beweist in einem
 Screenshot, dass ein Wert aus einer Kubernetes-ConfigMap durch einen Spark-Job bis in die
 Oberfläche wirkt.
 
-**Bedienablauf.** Übersichtsseite mit allen Maschinen als Kacheln (Ampel-Farbe nach Status/
-`limit_exceeded`) — Klick auf eine Kachel führt zur Detailseite dieser einen Maschine mit
-Temperaturverlauf. Echte Navigation über die URL (`/machine/<id>`), kein Dropdown-Zustand auf
-einer einzelnen Seite.
+**Bedienablauf.** Drei Seiten, alle über die URL adressierbar (kein Dropdown-Zustand auf
+einer einzelnen Seite, damit jeder UI-Pod jede Anfrage beantworten kann):
+
+1. **Übersicht (`/`).** Eine Kachel je Maschine mit Ampelfarbe: rot bei Status `ERROR` oder
+   `STOPPED`, gelb bei `OFF`/`PAUSED` („Steht") oder bei `limit_exceeded`, sonst grün
+   ([`ui/app.py`](ui/app.py#L38)). Die Kacheln aktualisieren sich alle 5 Sekunden per
+   Polling (`POLL_INTERVAL_SECONDS` aus der ConfigMap).
+2. **Detail (`/machine/<id>`).** Klick auf eine Kachel. Oben die Kennzahlen des letzten
+   Fensters (Mittel/Min/Max/Grenzwert/Events/Status), darunter der Temperaturverlauf der
+   letzten `HISTORY_MINUTES` (Default 15) als Linie mit Min-Max-Band und gestrichelter
+   Grenzwertlinie. Bei Zeiträumen über zwei Stunden verdichtet die API die 10-s-Fenster
+   serverseitig zu 5-Minuten-, 15-Minuten- oder Stundenmitteln, damit der Chart nicht mit
+   Zehntausenden Punkten kämpft.
+3. **Messwerte (`/messwerte`).** Alle Fenster aller Maschinen der letzten `HISTORY_MINUTES`
+   als sortier- und filterbare Tabelle, Zeilen mit `limit_exceeded` rot hinterlegt.
+
+Fällt die API aus, zeigt die UI „Keine Maschinendaten verfügbar" statt einer Fehlerseite
+([`ui/data_source.py`](ui/data_source.py#L122)).
 
 ---
 
 ## 8. Kubernetes-Deployment
+
+Alles läuft im Namespace `mes` aus einem einzigen Helm-Chart
+([`charts/mes-pipeline/`](charts/mes-pipeline/), [README](charts/mes-pipeline/README.md)).
+
+### Abbildung der Komponenten auf Workloads
+
+| Komponente | Workload-Typ | Warum dieser Typ | Service | Persistenz | Probes |
+|---|---|---|---|---|---|
+| Kafka | **StatefulSet** `kafka`, 3 Replicas, `podManagementPolicy: Parallel` | Broker brauchen stabile Netzwerknamen (`kafka-0..2.kafka.mes.svc`) für das KRaft-Quorum und je eine eigene Platte | Headless, `publishNotReadyAddresses: true` | PVC je Broker, 5 Gi | TCP 9092 |
+| MinIO | **StatefulSet** `minio`, 4 Replicas | Distributed Mode adressiert die Knoten per Namen (`minio-{0...3}`); Erasure Coding braucht feste Zuordnung Pod ↔ Platte | Headless + ClusterIP (`minio:9000`, Konsole 9001) | PVC je Knoten, 10 Gi | HTTP `/minio/health/*` |
+| Ingestion | **3 Deployments** `ingestion-a/b/c`, je 1 Replica | zustandslos, aber je Typ genau eine Instanz (siehe unten) | keiner (nur Producer) | keine | `pgrep main.py` |
+| Stream Processing | **3 Deployments** `stream-processing-a/b/c`, je 1 Replica, `strategy: Recreate` | Zustand liegt im Checkpoint in MinIO, nicht im Pod; `Recreate` verhindert zwei Instanzen auf demselben Checkpoint während eines Rollouts | keiner | Checkpoints in MinIO (Bucket `spark-checkpoints`) | `pgrep streaming_job.py`, erst nach 150 s (Spark-Start) |
+| Kompaktierung | **2 CronJobs** `silver-compaction` (\*/30), `bronze-compaction` (\*/10), `concurrencyPolicy: Forbid` | kurze, periodische Batch-Arbeit; ein Dauer-Pod würde Ressourcen binden und hätte keine Lauf-Historie | keiner | keine | — |
+| Serving-API | **Deployment** `serving-api` + **HPA** | zustandslos (Cache pro Pod ist nur Beschleunigung) | ClusterIP `serving-api:8000` | keine | `/health` (liveness, startup), `/ready` (prüft MinIO-Lesbarkeit) |
+| UI | **Deployment** `ui`, 2 Replicas | zustandslos, Zustand steckt in der URL | NodePort 30080 (minikube) bzw. ClusterIP + Ingress mit TLS (DHBW) | keine | `/health` |
+| Bucket-Anlage | **Job** `create-buckets` als Helm-Hook (`post-install,post-upgrade`) | einmalige Initialisierung, kein Dauerbetrieb | — | — | — |
+
+### Konfiguration und Secrets
+
+- **ConfigMap `pipeline-config`** ([`configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml)):
+  alle nicht-geheimen Laufzeitwerte — Kafka-Bootstrap, `TEMP_LIMIT`, MinIO-Endpunkt und
+  Bucket, Tabellenpfade, S3-Timeouts, Cache-TTLs, UI-Polling. Jeder Pod bindet sie per
+  `envFrom` ein, Code liest ausschließlich Umgebungsvariablen. Eine Annotation
+  `checksum/config` im Pod-Template sorgt dafür, dass eine ConfigMap-Änderung per
+  `helm upgrade` automatisch einen Rollout auslöst — sonst würde ein geänderter `TEMP_LIMIT`
+  erst beim nächsten zufälligen Pod-Neustart wirken.
+- **Secret `minio-credentials`** ([`secret.yaml`](charts/mes-pipeline/templates/secret.yaml)):
+  Root-User/-Passwort für den MinIO-Server und dieselben Werte als `MINIO_ACCESS_KEY`/
+  `MINIO_SECRET_KEY` für Spark, Kompaktierung und Serving-API. Gespeist aus
+  `values-secret.yaml`, die nicht im Repository liegt (`.gitignore`); Ingestion und UI bekommen
+  das Secret nicht, weil sie MinIO nie anfassen.
+- **Persistenz** ausschließlich über `volumeClaimTemplates` der beiden StatefulSets (3 × 5 Gi
+  Kafka, 4 × 10 Gi MinIO). Kein anderer Pod schreibt auf Platte: Spark-Checkpoints liegen in
+  MinIO, alles andere ist zustandslos.
+- **RBAC** nur für die CI: ein ServiceAccount, der `deployments` im Namespace `mes` lesen und
+  patchen darf ([`ci-rbac.yaml`](charts/mes-pipeline/templates/ci-rbac.yaml)), siehe §9.
+
+### Skalierung
 
 **Aus der Aufgabenstellung:** „Skalierbarkeit: die Anwendung muss darauf ausgelegt sein, in
 allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
@@ -312,7 +582,7 @@ allen Komponenten horizontal zu skalieren und dies soll gezeigt werden."
 | Stream Processing | Checkpoint in MinIO | **3 separate Deployments** (`stream-processing-a/b/c`), je `MACHINE_TYPES` gefiltert, isolierte Checkpoints | Maschinentyp / Kafka-Partition | `kubectl get pods -l mes.family=stream-processing` |
 | Serving-API | zustandslos | **HPA** auf CPU (1–5 Pods, Ziel 50 %) | HTTP-Request | `kubectl get hpa -w` |
 | UI | zustandslos | Deployment-Replicas | HTTP-Request | `kubectl scale` |
-| Kafka | StatefulSet + PVC | **3 KRaft-Broker** | Partition | `kafka-topics --describe`: Partitionen mit unterschiedlichen Leadern (0, 1, 2) |
+| Kafka | StatefulSet + PVC | **3 KRaft-Broker** | Partition | `kafka-topics --describe`: die drei Partitionen liegen auf verschiedenen Brokern (Leader-Zuweisung durch Kafka beim Auto-Create, im Screenshot Broker 1 und 2) |
 | MinIO | StatefulSet + PVC | **4-Node Distributed Mode**, Erasure Coding | Knoten | `mc admin info`: vier Knoten online, EC:2 |
 
 **Warum Ingestion und Stream Processing nicht über `replicas: N` skalieren.** Beide Komponenten
@@ -329,7 +599,18 @@ Instanzen nicht gegenseitig den Zustand überschreiben.
 
 **Eine bewusste Grenze:** Mehr Ingestion-/Stream-Processing-Instanzen als Kafka-Partitionen
 bringen nichts. Drei Partitionen heißen: sinnvolle Parallelität endet bei drei Instanzen. Wer
-weiter skalieren will, erhöht zuerst die Partitionszahl.
+weiter skalieren will, erhöht zuerst die Partitionszahl (`KAFKA_NUM_PARTITIONS` in
+[`kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml#L82)) und ergänzt dann die
+Instanzlisten in `values.yaml` — ohne Änderung an Code oder Templates.
+
+**Was Kafka und MinIO an Skalierung leisten — und was nicht.** Drei Broker verteilen die drei
+Partitionen (ein Leader je Broker), der Schreib- und Lesedurchsatz teilt sich also auf drei
+Pods und drei Platten. Der Replication-Factor der Topics ist im Prototyp aber 1: Fällt ein
+Broker aus, ist seine Partition bis zur Rückkehr nicht verfügbar. Das ist eine bewusste
+Entscheidung für den Prototyp (Ausfallsicherheit war nicht gefordert, RF 3 hätte den Disk-I/O
+verdreifacht, siehe unten) und in §12 benannt. MinIO hingegen ist mit vier Knoten und Erasure
+Coding EC:2 ausfalltolerant: Bei einem fehlenden Knoten laufen Lesen und Schreiben weiter, bei
+zwei fehlenden bleibt zumindest das Lesen möglich.
 
 Bei genügend Last werden MinIO oder Kafka zum Engpass, nicht die Serving-API.
 
@@ -356,22 +637,47 @@ Muster in der Form nicht zu erwarten ist.
 | minikube | lokale Entwicklungsumgebung |
 | Terraform, Ansible, OpenStack-CLI | Cluster in der DHBW Cloud |
 
-### Ein Chart, zwei Umgebungen
+### Schritt 0: Secrets anlegen (beide Umgebungen)
 
 ```bash
-# minikube
-helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait
+cp values-secret.yaml.example values-secret.yaml
+# rootUser / rootPassword für MinIO eintragen — die Datei ist gitignored
+```
 
-# DHBW Cloud
-helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml -f ./charts/mes-pipeline/values-dhbw.yaml --namespace mes --create-namespace --wait
+### Weg A: minikube (lokal, ohne Registry)
+
+Die vier eigenen Images werden direkt in die Docker-Engine von minikube gebaut; das Chart
+referenziert sie ohne Registry-Präfix (`mes/<komponente>:0.1`, `imagePullPolicy: IfNotPresent`).
+
+```bash
+minikube start --cpus 8 --memory 16g          # Kafka (3) + MinIO (4) + Spark (3) brauchen Platz
+minikube addons enable metrics-server         # nötig für die HPA
+eval $(minikube docker-env)                   # Windows/PowerShell: minikube docker-env | Invoke-Expression
+
+docker build -t mes/ingestion:0.1         ingestion/
+docker build -t mes/stream-processing:0.1 stream-processing/   # ~700 MB Spark-Pakete, dauert
+docker build -t mes/serving-api:0.1       serving-api/
+docker build -t mes/ui:0.1                ui/
+
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml --namespace mes --create-namespace --wait --timeout 10m
+
+kubectl get pods -n mes                       # alles Running, CronJob-Pods Completed
+minikube service ui -n mes                    # öffnet die UI (NodePort 30080)
+```
+
+### Weg B: DHBW Cloud
+
+```bash
+helm upgrade --install mes ./charts/mes-pipeline -f values-secret.yaml -f ./charts/mes-pipeline/values-dhbw.yaml --namespace mes --create-namespace --wait --timeout 10m
 ```
 
 `values-dhbw.yaml` überschreibt nur die paar Werte, die sich zwischen den Umgebungen
 unterscheiden — Image-Registry, `imagePullPolicy`, UI-Service-Typ und Ingress. Alles andere
 (Kafka mit 3 Brokern, MinIO mit 4 Knoten, die HPA auf der Serving-API, die Kompaktierungs-
-CronJobs) ist exakt dasselbe Chart.
+CronJobs) ist exakt dasselbe Chart. Voraussetzung sind ein Cluster und eine Registry mit den
+vier Images, siehe die Schritte 1–4 unten.
 
-### DHBW Cloud
+### DHBW Cloud im Detail
 
 **1. Zugang.** Die Cloud ist nur aus dem DHBW-Netz erreichbar (Eduroam oder VPN) und rein IPv6.
 Die Anmeldung von Werkzeugen erfolgt über ein **Application Credential**, nicht über Benutzername
@@ -387,9 +693,10 @@ terraform plan
 terraform apply
 ```
 
-Erzeugt drei VMs im Netz `DHBWV6` — einen Master (`general.medium`, 4 vCPU) und zwei Worker
-(`general.small`, 2 vCPU, macht 8 vCPU insgesamt) — und schreibt aus deren Adressen unmittelbar
-das Ansible-Inventar sowie `cluster.env`. Das ist der Kern des Infrastructure-as-Code-Gedankens:
+Erzeugt drei VMs im Netz `DHBWV6` — einen Master (`general.medium`, 4 vCPU / 16 GB) und zwei
+Worker (`general.small`, 2 vCPU / 8 GB, macht 8 vCPU insgesamt) — und schreibt aus deren
+IPv6-Adressen unmittelbar das Ansible-Inventar `terraform/generated-inventory.yml`
+([`main.tf`](terraform/main.tf#L37)). Das ist der Kern des Infrastructure-as-Code-Gedankens:
 **Die Ausgabe des einen Werkzeugs ist die Eingabe des nächsten**, es wird keine Adresse von Hand
 übertragen.
 
@@ -417,16 +724,40 @@ ansible-playbook ansible/playbook.yml \
   -i ansible/overrides.yml
 ```
 
-Die Rolle erkennt IPv4/IPv6 automatisch (`ip_family: auto`), installiert k3s als Server auf dem
-Master und als Agent auf den Workern, und liefert eine fertig adressierte Kubeconfig. Zwei
+Die Rolle installiert k3s im Dual-Stack-Modus (`ip_family: dual` in
+[`ansible/overrides.yml`](ansible/overrides.yml)) als Server auf dem Master und als Agent auf
+den Workern, richtet cert-manager mit DNS-Challenge für die `*.users.dhbw.site`-Zone ein und
+liefert eine fertig adressierte Kubeconfig (`ansible/kubeconfig-mes.yaml`, gitignored). Zwei
 Standardeinstellungen wurden bewusst überschrieben: **Longhorn** (repliziertes Storage,
 automatisch an bei drei Knoten) ist aus — bei 124 MB Tagesvolumen unnötiger Ausfallpunkt — und
 **automatische nächtliche k3s-Updates** sind aus, damit kein Cluster-Neustart mitten in die
-Projektwoche fällt.
+Projektwoche fällt. Das Playbook labelt die drei Knoten zusätzlich mit simulierten
+Availability Zones (`topology.kubernetes.io/zone`).
 
-**4. Anwendung deployen.** Siehe "Ein Chart, zwei Umgebungen" oben.
+**4. Registry und Images.** Die Images werden nicht von Docker Hub gezogen, sondern aus einer
+eigenen, per Basic-Auth gesicherten Registry im Cluster
+([`ansible/registry.yaml`](ansible/registry.yaml): Deployment + PVC + Ingress unter
+`registry.<kennung>.users.dhbw.site`). Einmalig anlegen und anmelden:
 
-**5. Erreichbarkeit von außen: Cloudflare Tunnel.** Die DHBW Cloud ist bewusst abgeschottet —
+```bash
+export KUBECONFIG=ansible/kubeconfig-mes.yaml
+kubectl apply -f ansible/registry.yaml        # setzt das Secret registry-htpasswd voraus
+docker login registry.<kennung>.users.dhbw.site
+
+for c in ingestion stream-processing serving-api ui; do
+  docker build -t registry.<kennung>.users.dhbw.site/mes/$c:0.1 $c/
+  docker push     registry.<kennung>.users.dhbw.site/mes/$c:0.1
+done
+```
+
+Danach übernimmt die CI (Punkt 6) Build und Push für drei der vier Komponenten automatisch.
+
+**5. Anwendung deployen.** Siehe „Weg B" oben. Auf dem Master läuft zusätzlich alle fünf
+Minuten [`tools/deploy-dhbw.sh`](tools/deploy-dhbw.sh) per Cron: Es zieht `main` und führt bei
+neuen Commits denselben `helm upgrade --install` aus — Chart- und Values-Änderungen im Repo
+werden damit ohne manuellen Schritt ausgerollt (GitOps im Kleinen).
+
+**6. Erreichbarkeit von außen: Cloudflare Tunnel.** Die DHBW Cloud ist bewusst abgeschottet —
 nur aus dem DHBW-Netz (Eduroam/VPN) erreichbar und rein IPv6. Für Werkzeuge, die *von außen*
 zugreifen müssen und weder im DHBW-Netz sitzen noch IPv6 sprechen — insbesondere die
 GitHub-Actions-Runner (öffentliches Internet, kein DHBW-Netz) — reicht die Cluster-Adresse
@@ -447,16 +778,19 @@ GitHub-Repository-Variablen (`REGISTRY_HOST`, `K8S_API_HOST`), statt sie von Han
 
 **Eine ehrliche Grenze dieser Lösung:** Kostenlose Cloudflare-Quick-Tunnel begrenzen einzelne
 Requests auf 100 MB. Das betrifft ausschließlich den Image-Push von `stream-processing` (siehe
-Punkt 6) — Lesezugriffe (Pulls, `kubectl`-API-Calls) sind davon nicht betroffen.
+Punkt 7) — Lesezugriffe (Pulls, `kubectl`-API-Calls) sind davon nicht betroffen.
 
-**6. CI/CD.** Vier GitHub-Actions-Workflows (`.github/workflows/build-*.yml`) bauen bei jedem
-Push das jeweilige Image, pushen es über den Registry-Tunnel und lösen einen
-`kubectl rollout restart` über den K8s-API-Tunnel aus — mit einer eigens dafür angelegten, auf
-`apps/deployments` (get/list/patch) beschränkten ServiceAccount-Rolle, kein
-Cluster-Admin-Zugriff für CI. Eine ehrliche Grenze: `stream-processing` bäckt beim Build
-~700 MB an Spark-/Hadoop-Paketen ins Image (um Maven-Central-Rate-Limits im laufenden Betrieb
-zu vermeiden), was das 100-MB-Limit des Registry-Tunnels sprengt — für diese eine Komponente
-läuft Build & Push deshalb manuell, CI übernimmt nur noch den Rollout-Restart.
+**7. CI/CD.** Vier GitHub-Actions-Workflows
+([`.github/workflows/`](.github/workflows/)) — drei davon (`ingestion`, `serving-api`, `ui`)
+bauen bei jedem Push auf `main`, der den jeweiligen Ordner berührt, das Image, pushen es über
+den Registry-Tunnel und lösen einen `kubectl rollout restart` über den K8s-API-Tunnel aus — mit
+einer eigens dafür angelegten, auf `apps/deployments` (get/list/patch) beschränkten
+ServiceAccount-Rolle, kein Cluster-Admin-Zugriff für CI. Eine ehrliche Grenze:
+`stream-processing` bäckt beim Build ~700 MB an Spark-/Hadoop-Paketen ins Image (um
+Maven-Central-Rate-Limits im laufenden Betrieb zu vermeiden), was das 100-MB-Limit des
+Registry-Tunnels sprengt — für diese eine Komponente läuft Build & Push deshalb manuell
+(Punkt 4), der vierte Workflow ist nur per `workflow_dispatch` auslösbar und übernimmt den
+Rollout-Restart der drei Instanzen.
 
 ### Abbau
 
@@ -473,52 +807,155 @@ Erst **nach** den Screenshots. Die VMs belegen bis dahin Kontingent, das sich de
 Verlinkte Dateien mit je einem Satz, warum die Stelle wesentlich ist — kein „hier wird X
 gemacht", sondern was daran eine Entscheidung oder ein Verständnis zeigt.
 
+**Ingestion**
+
 | Datei | Warum wesentlich |
 |---|---|
-| `ingestion/schema/unified_schema.py` | die Normalisierung dreier Rohformate — der fachliche Kern |
-| `ingestion/producer/kafka_producer.py` | `machine_id` als Partition-Key, sichert Reihenfolge je Maschine |
-| `stream-processing/streaming_job.py` | Fenster, Watermark, Maschinentyp-Filter für die horizontale Skalierung, Partitionierung (`machine_type`, `event_date`) |
-| `stream-processing/compact.py` | periodische Kompaktierung gegen das Small-Files-Problem, mit Retry gegen S3-Commit-Races |
-| `serving-api/app/storage.py` | Partition Pruning + TTL-Cache gegen wiederholte Full-Scans durch Readiness-Probes, `load_table()` |
-| `ui/data_source.py` | Anbindung an die Serving-API statt Mock, kurzer serverseitiger Cache gegen Mehrfachanfragen |
-| `charts/mes-pipeline/templates/kafka.yaml` | `podManagementPolicy: Parallel` + `publishNotReadyAddresses` — die beiden Bootstrapping-Deadlocks beim 3-Broker-Umbau |
-| `charts/mes-pipeline/templates/ingestion.yaml`, `stream-processing.yaml` | Helm-`range` über eine Instanzliste statt `replicas: N` — die eigentliche horizontale Skalierung |
-| `charts/mes-pipeline/templates/serving-api.yaml` | HPA ohne von Helm verwaltete `replicas` — kein Kampf zwischen `helm upgrade` und der Autoskalierung |
-| `charts/mes-pipeline/templates/compaction-cronjob.yaml`, `bronze-compaction-cronjob.yaml` | periodische Kompaktierung als eigener, kurzlebiger Workload-Typ statt Dauerbetrieb |
+| [`ingestion/parsers/json_parser.py`](ingestion/parsers/json_parser.py#L4-L27), [`pipe_parser.py`](ingestion/parsers/pipe_parser.py#L10-L45), [`csv_parser.py`](ingestion/parsers/csv_parser.py#L11-L22) | die Normalisierung dreier Rohformate auf ein Envelope — der fachliche Kern; das Feld-Mapping (`temp` → `temperature`) und die Positions-Zuordnung beim Pipe-Format sind die zwei Stellen, an denen Heterogenität tatsächlich aufgelöst wird |
+| [`ingestion/schema/unified_schema.py`](ingestion/schema/unified_schema.py) | das Zielschema `MachineEvent` mit generischer `measurements`-Map und `schema_version` — neue Messgrößen brauchen keine Schemaänderung im Envelope |
+| [`ingestion/producer/kafka_producer.py`](ingestion/producer/kafka_producer.py#L31-L49) | explizite Partitionszuordnung je Maschine statt Hash-Partitionierer, damit drei Keys auch drei Partitionen belegen; `flush()` einmal je Durchlauf statt je Nachricht |
+| [`ingestion/main.py`](ingestion/main.py#L20-L26) | `MACHINE_TYPES` als Filter — derselbe Container-Build läuft als `ingestion-a/b/c` |
+
+**Stream Processing**
+
+| Datei | Warum wesentlich |
+|---|---|
+| [`streaming_job.py` Zeile 96](stream-processing/streaming_job.py#L96) | Maschinentyp-Filter: die eine Zeile, die aus einem Pod drei parallele Instanzen macht |
+| [`streaming_job.py` Zeile 111–123](stream-processing/streaming_job.py#L111-L123) | Watermark 30 s, 10-s-Tumbling-Window, `avg/min/max/count` und `max_by(status)` — die nicht-triviale Transformation |
+| [`streaming_job.py` Zeile 100–108, 153–158, 191–196](stream-processing/streaming_job.py#L100-L108) | zustandsbehaftete Status-Query im `complete`-Modus mit `overwrite` je `machine_type`-Partition |
+| [`streaming_job.py` Zeile 134–137](stream-processing/streaming_job.py#L134-L137) | Anreicherung: `TEMP_LIMIT` aus der ConfigMap wird zur Spalte `temperature_limit` plus Flag `limit_exceeded` |
+| [`streaming_job.py` Zeile 142–150](stream-processing/streaming_job.py#L142-L150) | Checkpoint-Pfade mit Instanz-Suffix, damit sich `a/b/c` nicht gegenseitig den Zustand überschreiben |
+| [`stream-processing/compact.py`](stream-processing/compact.py#L29-L69) | periodische Kompaktierung gegen das Small-Files-Problem: `.cache()` gegen doppelte Reads, direkter Partitionsordner-Zugriff bei Bronze, Retry gegen S3-Commit-Races |
+
+**Serving und UI**
+
+| Datei | Warum wesentlich |
+|---|---|
+| [`serving-api/app/storage.py`](serving-api/app/storage.py#L40-L102) | Partition Pruning über `event_date`-Filter an pyarrow, TTL-Cache pro Filterwert, Retry bei transientem `FileNotFoundError` während Spark schreibt |
+| [`serving-api/app/routers/metrics.py`](serving-api/app/routers/metrics.py#L18-L50) | `/metrics/latest` liest nur heute und gestern (Partition Pruning), `/metrics/history` verdichtet lange Zeiträume serverseitig |
+| [`ui/data_source.py`](ui/data_source.py#L122-L143) | Anbindung an die Serving-API statt Mock, kurzer serverseitiger Cache gegen Mehrfachanfragen paralleler Browser-Sessions, „keine Daten" statt Fehlerseite bei API-Ausfall |
+| [`ui/app.py`](ui/app.py#L38-L53) | Ampellogik aus `last_status` und `limit_exceeded` — die Stelle, an der ConfigMap-Grenzwert und Streaming-State sichtbar werden |
+
+**Manifeste**
+
+| Datei | Warum wesentlich |
+|---|---|
+| [`charts/mes-pipeline/templates/kafka.yaml`](charts/mes-pipeline/templates/kafka.yaml#L10) | `podManagementPolicy: Parallel` + `publishNotReadyAddresses` — die beiden Bootstrapping-Deadlocks beim 3-Broker-KRaft-Umbau (Broker warten aufeinander, bevor sie Ready sind) |
+| [`charts/mes-pipeline/templates/ingestion.yaml`](charts/mes-pipeline/templates/ingestion.yaml#L1), [`stream-processing.yaml`](charts/mes-pipeline/templates/stream-processing.yaml#L51) | Helm-`range` über eine Instanzliste statt `replicas: N` — die eigentliche horizontale Skalierung |
+| [`charts/mes-pipeline/templates/serving-api.yaml`](charts/mes-pipeline/templates/serving-api.yaml#L74) | HPA ohne von Helm verwaltete `replicas` — kein Kampf zwischen `helm upgrade` und der Autoskalierung |
+| [`charts/mes-pipeline/templates/minio.yaml`](charts/mes-pipeline/templates/minio.yaml#L82) | Distributed-Mode-Adressierung `minio-{0...3}` aus `replicaCount` berechnet, plus Helm-Hook-Job für die Buckets |
+| [`charts/mes-pipeline/templates/configmap.yaml`](charts/mes-pipeline/templates/configmap.yaml), [`secret.yaml`](charts/mes-pipeline/templates/secret.yaml) | alle Laufzeitwerte und Zugangsdaten außerhalb der Images; `checksum/config`-Annotation in den Deployments löst Rollouts bei Änderungen aus |
+| [`charts/mes-pipeline/templates/compaction-cronjob.yaml`](charts/mes-pipeline/templates/compaction-cronjob.yaml), [`bronze-compaction-cronjob.yaml`](charts/mes-pipeline/templates/bronze-compaction-cronjob.yaml) | periodische Kompaktierung als eigener, kurzlebiger Workload-Typ statt Dauerbetrieb |
+| [`charts/mes-pipeline/values.yaml`](charts/mes-pipeline/values.yaml), [`values-dhbw.yaml`](charts/mes-pipeline/values-dhbw.yaml) | ein Chart, zwei Umgebungen: das Overlay überschreibt nur Registry, Pull-Policy und UI-Exposition |
 
 ---
 
 ## 11. Screenshots und Nachweise
 
+Alle Bilder liegen als Dateien unter [`docs/screenshots/`](docs/screenshots/) und stammen vom
+Cluster in der DHBW Cloud.
+
+### Beispiel-Outputs der Pipeline
+
+Ein normalisiertes Ereignis, wie es im Topic `machine-events` liegt (Typ A, nach dem Parser):
+
+```json
+{
+  "timestamp": "2026-09-12T09:14:02.318740+00:00",
+  "machine_id": "A-001",
+  "machine_type": "A",
+  "measurements": {
+    "status": "RUNNING",
+    "temperature": 84.17,
+    "pressure": 6.32,
+    "rotation_speed": 1698.4,
+    "power_consumption": 14.9,
+    "runtime_seconds": 11840.2
+  },
+  "schema_version": "1.0"
+}
+```
+
+Eine Silver-Zeile, wie sie die Serving-API unter `GET /metrics/latest` ausliefert:
+
+```json
+{
+  "machine_id": "A-001",
+  "machine_type": "A",
+  "window_start": "2026-09-12T09:14:00+00:00",
+  "window_end": "2026-09-12T09:14:10+00:00",
+  "avg_temperature": 84.31,
+  "min_temperature": 84.05,
+  "max_temperature": 85.62,
+  "event_count": 50,
+  "last_status": "RUNNING",
+  "temperature_limit": 85.0,
+  "limit_exceeded": true
+}
+```
+
+### Screenshots
+
 ![kubectl get pods](docs/screenshots/01-kubectl-get-pods.png)
-*Alle Workloads im Namespace `mes` — Vielfalt der Workload-Typen (Deployment, StatefulSet, CronJob).*
+*Oben die drei k3s-Knoten der DHBW Cloud (`mes-master`, `mes-worker-1/2`, IPv6, Ubuntu 24.04),
+darunter alle Workloads im Namespace `mes`: 3 Kafka- und 4 MinIO-Pods der StatefulSets, je
+drei Ingestion- und Stream-Processing-Deployments, Serving-API (hier 3 Replicas durch die
+HPA), 2 UI-Replicas und die abgeschlossenen Compaction-Pods der CronJobs. `RESTARTS 0` bei
+allen Stream-Processing-Instanzen; die Spalte `NODE` zeigt die Verteilung über die drei
+Knoten.*
 
 ![HPA der Serving-API](docs/screenshots/02-kubectl-get-hpa.png)
-*Horizontal Pod Autoscaler der Serving-API unter Last.*
+*Horizontal Pod Autoscaler der Serving-API vor und unter Last: oben Ruhezustand mit 1 % CPU und
+3 Replicas, unten während paralleler `/metrics/history`-Anfragen mit 222 % CPU gegen das Ziel
+von 50 % — die HPA hat auf das Maximum von 5 Replicas skaliert, `kubectl top` zeigt die
+Verteilung der Last über die Pods.*
 
 ![Horizontale Skalierung von Ingestion und Stream Processing](docs/screenshots/03-scaling-abc.png)
-*Drei Ingestion- und drei Stream-Processing-Instanzen, je einem Maschinentyp zugeordnet.*
+*Drei Ingestion- und drei Stream-Processing-Instanzen, je einem Maschinentyp zugeordnet
+(`-a/-b/-c`), aus dem Helm-`range` erzeugt und über drei Knoten verteilt — die Skalierung der
+beiden Komponenten, die nicht über eine HPA laufen (§8).*
 
 ![UI Übersicht](docs/screenshots/04-ui-overview.png)
-*Maschinenübersicht mit einer Kachel je Maschine.*
+*Maschinenübersicht mit einer Kachel je Maschine: Ampel, Ø/Min/Max-Temperatur und Event-Zahl
+des jeweils letzten 10-s-Fensters aus der Silver-Schicht, alle 5 s per Polling aktualisiert.
+Alle drei Rohformate kommen als Kacheln an.*
 
 ![UI Detailansicht mit Grenzwertüberschreitung](docs/screenshots/05-ui-detail-limit-exceeded.png)
-*Detailansicht einer Maschine mit `limit_exceeded`-Warnung — die ConfigMap wirkt bis in die UI.*
+*Detailansicht von C-001: Kennzahlen des letzten Fensters und der Temperaturverlauf der letzten
+15 Minuten mit Min-Max-Band. Die gestrichelte Linie ist der Grenzwert `TEMP_LIMIT=85` aus der
+ConfigMap `pipeline-config`; der Verlauf pendelt darum und überschreitet ihn mehrfach (Fenster
+mit `limit_exceeded=true`, in der Messwerte-Tabelle rot), im zuletzt geschlossenen Fenster liegt
+die Maschine mit 84,7 °C gerade wieder darunter. Der Weg ConfigMap → Spark → Parquet → API → UI
+ist damit in einem Bild sichtbar.*
 
 ![Kafka-Partitionen](docs/screenshots/06-kafka-topics-describe.png)
-*Drei Partitionen mit unterschiedlichen Broker-Leadern.*
+*Drei Partitionen, Replication-Factor 1, Leader auf Broker 1 und 2 verteilt. Kafka weist die Leader beim Auto-Create selbst zu; dass Broker 0 hier leer ausgeht, ist bei drei Partitionen auf drei Brokern statistisch normal und ändert nichts an der Skalierungseinheit "Partition".*
 
 ![MinIO-Cluster-Status](docs/screenshots/07-minio-admin-info.png)
-*Vier MinIO-Knoten online, Erasure Coding aktiv.*
+*`mc admin info` aus `minio-0`: vier MinIO-Knoten online, je eine Platte (PVC), ein Erasure-Set
+mit Stripe-Größe 4 und `EC:2` — zwei Knoten dürfen ausfallen, ohne dass Daten verloren gehen.*
 
 ![Serving-API Swagger-UI](docs/screenshots/08-swagger-ui.png)
-*Interaktive API-Dokumentation mit allen Endpunkten.*
+*Die von FastAPI generierte Swagger-UI mit den vier Endpunkten (`/health`, `/ready`,
+`/metrics/latest`, `/metrics/history`); `GET /metrics/latest` ist ausgeführt und liefert die
+echten Silver-Zeilen der drei Maschinen mit `limit_exceeded`, `last_status` und
+`temperature_limit` — der Serving-Output der Pipeline.*
 
 ![Kompaktierungs-CronJobs](docs/screenshots/09-cronjob-compaction.png)
-*Silver- und Bronze-Kompaktierung als eigene CronJobs, mit erfolgreichem letzten Lauf.*
+*Silver- und Bronze-Kompaktierung als eigene CronJobs (alle 30 bzw. 10 Minuten) und das Log des
+letzten Bronze-Laufs: 323.825 Rohereignisse des Tages gelesen und als eine Datei je Partition
+zurückgeschrieben (§6, Small-Files-Problem).*
 
-![Frisches Helm-Deployment](docs/screenshots/10-helm-deploy-fresh.png)
-*Reproduzierbarkeit: `helm upgrade --install` auf einem frischen Cluster.*
+![Helm-Deployment](docs/screenshots/10-helm-deploy-fresh.png)
+*Reproduzierbarkeit: der dokumentierte `helm upgrade --install`-Befehl aus §9 gegen das laufende
+Release, danach `helm history`. Revision 34 ist der in §9 beschriebene fehlgeschlagene Lauf
+(Hook-Image nicht ziehbar), Revision 35 der erfolgreiche Lauf mit dem korrigierten Chart 0.2.0
+direkt danach — der Deploy-Weg funktioniert, und Helm hält die Historie nachvollziehbar fest.*
+
+![Ereignisse im Kafka-Topic](docs/screenshots/11-kafka-console-consumer.png)
+*Beispiel-Output der Ingestion: normalisierte Ereignisse aus dem Topic `machine-events` mit Key
+(`machine_id`) und Partition — Typ C auf Partition 2, Typ A auf Partition 0, jeweils mit der
+generischen `measurements`-Map und `schema_version` (§2, §4).*
 
 ---
 
@@ -549,6 +986,43 @@ Die Rohereignisse liegen im Kafka-Log (7 Tage Retention) und zusätzlich dauerha
 `bronze/machine-events` in MinIO. Nach den 7 Tagen ist ein Offset-Reset über Kafka nicht mehr
 möglich, die materialisierte Bronze-Kopie bleibt aber bestehen.
 
+### Parallele Schreiber auf einem Tabellenpfad — zwei Race Conditions aus dem Betrieb
+
+Die Aufteilung in drei Stream-Processing-Instanzen (§8) hatte eine Nebenwirkung, die erst nach
+Stunden Laufzeit sichtbar wurde und die wir hier bewusst benennen, weil sie die Grenze reinen
+Parquets ohne Table Format konkret zeigt. Beide Fehlerbilder sind in `kubectl logs` der
+Instanzen belegt (12.09.2026) und inzwischen behoben — die Beschreibung bleibt, weil der
+Lösungsweg ein Verständnis zeigt, das ein reibungsloser Betrieb nicht gezeigt hätte:
+
+| Query | Fehler | Ursache |
+|---|---|---|
+| Bronze (damals nativer File-Sink) | `Race while writing batch 42726` | Alle drei Instanzen schrieben in denselben Pfad `bronze/machine-events` und teilten sich damit **ein** `_spark_metadata`-Log. Jede Instanz zählt ihre Batches selbst; sobald zwei Instanzen dieselbe Batch-ID committen wollen, weist der Sink den zweiten Commit ab und die Query stirbt. |
+| Silver-Metrics (`foreachBatch`) | `FileNotFoundException: .../silver/machine-metrics/_temporary/0/task_…` | Die Partitionierung nach `machine_type` trennt zwar die **Daten**-Ordner der Instanzen, nicht aber das Staging-Verzeichnis `_temporary/0` des Hadoop-Output-Committers unter der Tabellenwurzel. Beendet eine Instanz (oder der Kompaktierungs-CronJob) ihren Job, räumt sie `_temporary` auf und zieht der gerade schreibenden Nachbarinstanz die Dateien unter den Füßen weg. |
+
+In einer früheren Fassung fing die Hauptschleife in `streaming_job.py` solche Query-Fehler ab
+und ließ die übrigen Queries weiterlaufen — der Pod blieb `Running`, die Liveness-Probe prüft
+nur den Prozess, und die Lücke in Silver fiel erst Stunden später in der UI auf. Seitdem
+beendet sich der Prozess beim Tod einer Query mit Fehlercode
+([`streaming_job.py`](stream-processing/streaming_job.py), Ende der Datei): Kubernetes
+startet den Pod neu, alle drei Queries setzen aus ihren Checkpoints wieder auf, Kafka hält die
+Ereignisse solange vor. Aus einer stillen Lücke wird ein sichtbarer Neustart von rund zwei
+Minuten (`RESTARTS` in `kubectl get pods`). Das behebt die Ursache nicht, macht sie aber
+beobachtbar und selbstheilend.
+
+**Die Lösung** ist bewusst die einfachste, die das Problem an der Wurzel trifft: Jede Instanz
+schreibt alle drei Ausgaben direkt in ihren eigenen `machine_type=<X>`-Ordner statt per
+`partitionBy` in die gemeinsame Wurzel (§5). `_temporary` liegt damit je Instanz getrennt, und
+Bronze läuft über `foreachBatch` ohne `_spark_metadata`. Das Layout auf MinIO ist unverändert,
+Serving-API und Kompaktierung lesen weiter die Tabellenwurzel. Seit dem Umbau laufen die drei
+Instanzen ohne Neustart (Screenshot 01, Spalte `RESTARTS`).
+
+Genau das ist trotzdem die Klasse von Problemen, die ein transaktionales Table Format (Delta,
+Iceberg) grundsätzlich löst: Jeder Schreiber committet atomar über ein Log, kein gemeinsames
+Staging-Verzeichnis, keine Batch-ID-Kollision. Unsere Lösung funktioniert, weil die
+Schreiber entlang derselben Achse getrennt sind wie die Partitionen; sobald zwei Instanzen
+denselben `machine_type` schreiben müssten (Ausblick Punkt 7), wäre der S3A-„Magic
+Committer" oder Delta nötig.
+
 ### Kein Katalog, kein Table Format
 
 Ohne Delta oder Iceberg gibt es keine ACID-Transaktionen, kein Time Travel und keine
@@ -557,6 +1031,27 @@ inkonsistente Sicht liefern — das haben wir bei der Kompaktierung konkret beob
 Kompaktiert ein CronJob dieselbe, gerade noch aktiv beschriebene Tages-Partition, kann der
 S3-Commit scheitern. Für den Prototyp lösen wir das über Retries, nicht über ein
 transaktionales Table Format.
+
+### Ausfallsicherheit von Kafka
+
+Der Replication-Factor der Topics ist 1 (§8). Drei Broker verteilen die Last, ersetzen sich
+aber nicht gegenseitig: Fällt ein Broker aus, ist seine Partition — und damit ein Maschinentyp —
+bis zu seiner Rückkehr weder schreib- noch lesbar. Für den Prototyp war das die bewusste Wahl
+gegenüber dreifachem Disk-I/O; im Produktivbetrieb wäre `replication.factor=3` mit
+`min.insync.replicas=2` die erste Änderung.
+
+### Statusmodell in der UI
+
+Die Ampel bildet drei Stufen ab (rot `ERROR`/`STOPPED`, gelb `OFF`/`PAUSED`/Grenzwert, grün).
+Sie stützt sich auf den `last_status`-String der jeweiligen Maschine; die Statuswerte sind je
+Maschinentyp verschieden (A kennt fünf, C zwei, B keinen), ein einheitliches Statusmodell
+über alle Typen gibt es nicht. Das gehört in die Gold-Schicht des Ausblicks.
+
+### Keine Authentifizierung
+
+Weder API noch UI noch MinIO-Konsole verlangen innerhalb des Clusters eine Anmeldung; nach
+außen ist nur die UI (Ingress) exponiert. Für einen Prototyp im abgeschotteten DHBW-Netz
+angemessen, für mehr nicht.
 
 ### Betrieb
 
@@ -580,3 +1075,10 @@ aber noch nicht deployt.
 6. Generische Feldübertragung (aktuell sind Feldnamen an mehreren Stellen — Aggregation,
    API-Serialisierung, UI-Spalten — fest verdrahtet; neue Messgrößen brauchen aktuell noch
    Codeänderungen an drei Stellen statt reiner Konfiguration)
+7. Instanzen entlang der Kafka-Partitionen statt entlang der Maschinentypen: Jede
+   Stream-Processing-Instanz übernimmt per `assign` eine feste Partitionsmenge, Maschinen
+   werden per Hash auf Partitionen verteilt. Dann ist die Zahl der Instanzen von der Zahl der
+   Maschinen und Typen entkoppelt, neue Maschinen brauchen keinen neuen Eintrag in
+   `values.yaml`, und die Instanzzahl ließe sich aus Consumer-Lag heraus automatisch anpassen
+   (z. B. KEDA). Voraussetzung ist die Lösung der Schreibkonflikte aus dem Abschnitt oben, weil
+   dann mehrere Instanzen dieselbe `machine_type`-Partition beschreiben.

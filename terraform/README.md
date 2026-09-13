@@ -5,9 +5,11 @@ DHBW-Cloud (`newstack.dhbw.cloud`), plus das Ansible-Inventar für den nächsten
 
 ## Aufbau
 
-Alles in einer Datei (`main.tf`) statt der üblichen Aufteilung `versions/variables/main/outputs`
-— Terraform liest ohnehin alle `.tf` eines Ordners zusammen, bei dieser Projektgröße ist eine
-Datei übersichtlicher als vier.
+Die übliche Aufteilung: [`versions.tf`](versions.tf) (Provider `openstack` und `local`),
+[`variables.tf`](variables.tf) (Projekt, Image-Name, Flavors, Key-Pair, Netz, Provider-Block),
+[`main.tf`](main.tf) (die drei Instanzen und das generierte Inventar) und
+[`outputs.tf`](outputs.tf) (IPv6-Adressen, Inventar-Pfad). `flavors.txt` ist die abgelegte
+Ausgabe von `openstack flavor list`, damit die Flavor-Wahl unten nachvollziehbar bleibt.
 
 | Ressource | Was |
 |---|---|
@@ -60,10 +62,10 @@ alten Platte lag — unkritisch, solange noch nichts deployt ist.
 
 ## Was hier abweicht — gegenüber der Kursvorlage
 
-| | Vorlage (`docs/module files/CC & Terraform/`) | Hier | Warum |
+| | Vorlage aus dem Übungs-Track der Vorlesung | Hier | Warum |
 |---|---|---|---|
-| Anmeldung | Benutzer + Passwort | Application Credential | SSO, kein Passwort mehr möglich |
+| Anmeldung | Benutzer + Passwort | Application Credential (`clouds.yaml`, außerhalb des Repos) | SSO, kein Passwort mehr möglich |
 | Netz | `DHBW-1-Upper` | `DHBWV6` | in der neuen Cloud umbenannt |
-| Image | feste `image_id` | Auflösung über den Namen | die IDs der Vorlage existieren nicht mehr |
+| Image | feste `image_id` | Auflösung über den Namen (`Ubuntu 24.04`, `most_recent`) | die IDs der Vorlage existieren nicht mehr; die DHBW ersetzt Images regelmäßig |
 | Flavor | `m1.extra_large` (8 vCPU) für alle Knoten | `general.medium`/`general.small` | 3 × 8 vCPU je Gruppe erschöpften das übrige gemeinsame Kontingent |
-| Adressen | `fixed_ip_v4` | `fixed_ip_v6` | die privaten IPv4 sind von außen nicht erreichbar |
+| Adressen | `fixed_ip_v4` | `fixed_ip_v6`, Inventar mit `ip_family: dual` | die privaten IPv4 sind von außen nicht erreichbar |

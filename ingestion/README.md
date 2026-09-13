@@ -24,21 +24,35 @@ vom Typ A, 5 vom Typ B und 3 vom Typ C. Welche Typen ein Prozess simuliert, steu
 
 | Typ | Rohformat | Felder in `measurements` |
 |---|---|---|
-| A | JSON | `temperature`, `pressure`, `rotation_speed`, `power_consumption` |
+| A | JSON, flach (das Parser-Modul heißt historisch `csv_parser.py`) | `status`, `temperature`, `pressure`, `rotation_speed`, `power_consumption`, `runtime_seconds` |
 | B | JSON, abweichende Feldnamen (`ts`, `id`, `temp`) | `temperature`, `vibration` |
 | C | Pipe-separiert | `temperature`, `status` |
 
-### Warum nur Typ C einen `status` liefert
+### Was die Simulatoren physikalisch tun
 
-Das ist beabsichtigt und kein fehlendes Feld. Nur Maschinentyp C besitzt im Use Case
-überhaupt ein Statuskonzept (`RUNNING`, `STOPPED`, `ERROR`); A und B melden reine Messwerte
-ohne Betriebszustand. Das ist genau der Veracity-Aspekt, den der Prototyp zeigen soll:
-nicht jedes Ereignis trägt jedes Feld, und die Verarbeitung muss damit umgehen können
-(siehe [README](../README.md) §2 und [interface-contracts.md](../docs/interface-contracts.md)).
+Die drei Generatoren in [`simulators/`](simulators/) sind keine Zufallszahlen, sondern kleine
+Zustandsmaschinen mit Gedächtnis je `machine_id`:
 
-Folge stromabwärts: `last_status` ist für Maschinen vom Typ A und B dauerhaft `null`.
-Die UI sollte dafür „kein Status" bzw. eine neutrale Anzeige zeigen — es ist kein Fehler
-in der Ingestion und kein Datenverlust.
+| Typ | Verhalten | Statuswerte |
+|---|---|---|
+| A | Betriebszeit 06–18 Uhr UTC; heizt unter Last bis 92 °C, kühlt dann auf 78 °C ab, Druck und Drehzahl folgen der Last; über 105 °C oder 9 bar → `ERROR`; außerhalb der Betriebszeit fährt sie herunter | `OFF`, `STARTING`, `RUNNING`, `COOLING`, `ERROR` |
+| B | Temperatur driftet zwischen 50 und 80 °C, Vibration folgt der Temperatur | keiner |
+| C | 60 Minuten Lauf (Temperatur nähert sich 85 °C), 5 Minuten Pause (kühlt Richtung 22 °C) | `RUNNING`, `PAUSED` |
+
+Mit dem Grenzwert `TEMP_LIMIT=85` aus der ConfigMap ist damit vor allem Typ A regelmäßig
+zwischen 85 und 92 °C über dem Limit (`limit_exceeded=true`), Typ C streift die Grenze am Ende
+seiner Laufphase, Typ B nie.
+
+### Warum nicht jeder Typ jedes Feld liefert
+
+Das ist beabsichtigt und kein fehlendes Feld. Typ B hat im Use Case kein Statuskonzept, Druck
+und Drehzahl gibt es nur bei A, Vibration nur bei B. Das ist genau der Veracity-Aspekt, den der
+Prototyp zeigen soll: nicht jedes Ereignis trägt jedes Feld, und die Verarbeitung muss damit
+umgehen können (siehe [README](../README.md) §2 und
+[interface-contracts.md](../docs/interface-contracts.md)).
+
+Folge stromabwärts: `last_status` ist für Maschinen vom Typ B dauerhaft `null`. Die UI zeigt
+dafür eine neutrale Anzeige — es ist kein Fehler in der Ingestion und kein Datenverlust.
 
 ## Partitionierung
 

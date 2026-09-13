@@ -59,15 +59,17 @@ cp .env.example .env
 # .env mit echten Werten füllen
 ```
 
-| Variable | Bedeutung | Default |
-|---|---|---|
-| `MINIO_ENDPOINT` | URL des MinIO-Servers | `http://minio:9000` |
-| `MINIO_ACCESS_KEY` | Zugangsschlüssel | – (erforderlich) |
-| `MINIO_SECRET_KEY` | Geheimer Schlüssel | – (erforderlich) |
-| `MINIO_DATA_BUCKET` | Bucket-Name der Silver-Schicht | `mes-data` |
-| `S3_CACHE_TTL_SECONDS` | Gültigkeitsdauer des In-Memory-Caches | `30` |
-| `S3_READ_TIMEOUT` | Timeout für einzelne S3-Reads | `25` |
-| `REDIS_HOST` | Optionaler geteilter Cache statt In-Memory (siehe §9) | – (nicht gesetzt) |
+| Variable | Bedeutung | Default im Code | Wert in der ConfigMap (Kubernetes) |
+|---|---|---|---|
+| `MINIO_ENDPOINT` | URL des MinIO-Servers | `http://minio:9000` | `http://minio:9000` |
+| `MINIO_ACCESS_KEY` | Zugangsschlüssel | – (erforderlich) | aus Secret `minio-credentials` |
+| `MINIO_SECRET_KEY` | Geheimer Schlüssel | – (erforderlich) | aus Secret `minio-credentials` |
+| `MINIO_DATA_BUCKET` | Bucket-Name der Silver-Schicht | `mes-data` | `mes-data` |
+| `SILVER_TABLE_PATH`, `STATUS_TABLE_PATH` | Tabellenpfade im Bucket | `silver/machine-metrics`, `silver/machine-status` | dito |
+| `S3_CACHE_TTL_SECONDS` | Gültigkeitsdauer des In-Memory-Caches | `5` | `30` |
+| `S3_CONNECT_TIMEOUT` / `S3_READ_TIMEOUT` | Timeouts gegen MinIO | `5` / `10` | `5` / `25` |
+| `S3_RETRY_MAX_ATTEMPTS` | botocore-Retries | `1` | `1` |
+| `REDIS_HOST` | Optionaler geteilter Cache statt In-Memory (siehe §9) | – (nicht gesetzt) | nicht gesetzt |
 
 `.env.example` darf ins Git, `.env` selbst niemals (steht in `.gitignore`/`.dockerignore`).
 
@@ -100,7 +102,11 @@ In Kubernetes werden dieselben Variablen über eine ConfigMap/Secret statt `--en
 | GET | `/health` | Liveness-Probe – Prozess läuft, sagt nichts über MinIO aus |
 | GET | `/ready` | Readiness-Probe – prüft, ob MinIO erreichbar und die Tabelle lesbar ist |
 | GET | `/metrics/latest` | Neuestes Zeitfenster je Maschine (Basis für die Kachel-Übersicht) |
-| GET | `/metrics/history?machine_id=<id>&minutes=<n>` | Zeitreihe einer Maschine der letzten n Minuten (Default 15), Basis für den Temperaturverlauf |
+| GET | `/metrics/history?machine_id=<id>&minutes=<n>` | Zeitreihe einer Maschine der letzten n Minuten (Default 15), Basis für den Temperaturverlauf. Ab `minutes > 120` werden die 10-s-Fenster serverseitig zu 5-Minuten- (bis 2 Tage), 15-Minuten- (bis 7 Tage) bzw. Stunden-Buckets verdichtet: gewichteter Mittelwert für `avg_temperature`, Min/Max, Summe der `event_count` |
+
+Beide Fachendpunkte lesen nur die Partitionen ab dem benötigten `event_date` (Partition
+Pruning): `/metrics/latest` ab gestern (damit eine Maschine, die seit gestern nichts mehr
+gemeldet hat, nicht aus der Liste fällt), `/metrics/history` ab dem Tag des Cutoffs.
 
 Beispiel-Response (`/metrics/latest`, ein Eintrag):
 

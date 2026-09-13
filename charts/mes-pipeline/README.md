@@ -13,16 +13,19 @@ charts/mes-pipeline/
     ├── _helpers.tpl           # gemeinsame Label-/Namens-Helfer
     ├── configmap.yaml          # pipeline-config: alle nicht-geheimen Laufzeit-Werte
     ├── secret.yaml             # minio-credentials
-    ├── kafka.yaml              # StatefulSet, 3 Broker, KRaft-Modus
-    ├── minio.yaml              # StatefulSet, 4 Nodes, Distributed Mode
-    ├── ingestion.yaml          # 3 Deployments per Helm-range (a/b/c)
-    ├── stream-processing.yaml  # 3 Deployments per Helm-range (a/b/c)
+    ├── kafka.yaml              # Headless Service + StatefulSet, 3 Broker, KRaft-Modus, PVC je Broker
+    ├── minio.yaml              # Headless + ClusterIP Service, StatefulSet 4 Nodes (Distributed Mode, PVC je Node),
+    │                           #   Helm-Hook-Job create-buckets (post-install/post-upgrade)
+    ├── ingestion.yaml          # 3 Deployments per Helm-range (a/b/c), Init-Container wartet auf Kafka
+    ├── stream-processing.yaml  # 3 Deployments per Helm-range (a/b/c), strategy Recreate, Spark im Local-Modus je Pod
     ├── compaction-cronjob.yaml       # CronJob: Silver-Kompaktierung, alle 30 Min
     ├── bronze-compaction-cronjob.yaml # CronJob: Bronze-Kompaktierung, alle 10 Min
-    ├── serving-api.yaml         # Deployment + HPA (kein von Helm verwaltetes replicas)
-    ├── ui.yaml                  # Deployment + Service
+    ├── serving-api.yaml         # Service + Deployment + HPA (kein von Helm verwaltetes replicas)
+    ├── ui.yaml                  # Service (NodePort/ClusterIP) + Deployment + optionaler Ingress mit TLS
     └── ci-rbac.yaml             # ServiceAccount/Role/RoleBinding für GitHub Actions
 ```
+
+Vollständige Abbildung Komponente → Workload/Service/PVC/Probes: Haupt-README §8.
 
 ## Zwei Umgebungen, ein Chart
 

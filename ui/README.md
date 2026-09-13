@@ -19,17 +19,32 @@ Rolle laut Aufgabenstellung: **Anzeige der verarbeiteten Ergebnisse.**
 Die UI liest ausschließlich über die Serving-API. Sie schreibt nichts und
 spricht weder Kafka noch MinIO direkt an.
 
-Solange die API noch nicht steht, liefert `data_source.py` erfundene Daten im
-Format der Silver-Tabelle. Umstellung auf die echte API: `USE_MOCK=false`
-setzen und `API_BASE_URL` auf den Service zeigen lassen. Der Rest der UI bleibt
-unverändert.
+Für die lokale Entwicklung ohne laufende API liefert `data_source.py` bei
+`USE_MOCK=true` erfundene Daten im Format der Silver-Tabelle. Im Kubernetes-Deployment
+steht `USE_MOCK` in der ConfigMap `pipeline-config` auf `false` und `API_BASE_URL` auf
+`http://serving-api:8000` — die deployte UI zeigt ausschließlich echte Pipeline-Daten.
 
 Erwartete Endpunkte:
 
 - `GET /metrics/latest` → Liste, ein Objekt je Maschine (neuestes Fenster)
 - `GET /metrics/history?machine_id=A-001&minutes=15` → Liste von Fenstern
 
-Feldnamen entsprechen den Spalten von `silver_machine_metrics`.
+Feldnamen entsprechen den Spalten von `silver_machine_metrics`. Fällt die API aus
+(Timeout, Fehlercode, keine Verbindung), liefert `data_source.py` eine leere Liste
+und die UI zeigt „Keine Maschinendaten verfügbar" statt einer Fehlerseite.
+
+## Seiten und Bedienablauf
+
+| Pfad | Inhalt |
+|---|---|
+| `/` | Übersicht: eine Kachel je Maschine mit Ampel, Ø/Min/Max-Temperatur und Event-Zahl des letzten Fensters; Klick führt zur Detailseite |
+| `/machine/<id>` | Detail: Kennzahlenzeile des letzten Fensters, Temperaturverlauf der letzten `HISTORY_MINUTES` mit Min-Max-Band und Grenzwertlinie |
+| `/messwerte` | Tabelle aller Fenster aller Maschinen, sortier- und filterbar, Zeilen mit `limit_exceeded` rot |
+
+Ampellogik (`traffic_light()` in `app.py`): rot bei `last_status` `ERROR` oder `STOPPED`,
+gelb bei `OFF` (Typ A außerhalb der Betriebszeit) und `PAUSED` (Typ C) sowie bei
+`limit_exceeded`, sonst grün. Typ B liefert keinen Status und ist daher nur über den
+Grenzwert gelb oder grün.
 
 ## Aktualisierung
 
